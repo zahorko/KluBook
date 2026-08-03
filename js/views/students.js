@@ -8,6 +8,7 @@ import {
 import {
   db, sortedGroups, groupName, studentsOfGroup, upsertStudent, deleteStudent, studentById,
   paymentStatus, togglePayment, todayISO, periodOf, updateStudent,
+  studentFee, hasOwnFee,
 } from '../store.js';
 import { go, refresh } from '../router.js';
 
@@ -119,6 +120,9 @@ export function renderStudentDetail(root, studentId) {
         el('div', { text: `Kontakt: ${s.contactName || '—'}${s.contactPhone ? ` · ${s.contactPhone}` : ''}` }),
         s.contactEmail ? el('div', { text: s.contactEmail }) : null,
         el('div', { text: `V klube od: ${fmtDate(s.startDate)}` }),
+        el('div', {
+          text: `Mesačný poplatok: ${studentFee(s)} €${hasOwnFee(s) ? ' (vlastný)' : ' (klubový)'}`,
+        }),
         s.note ? el('div', { style: { marginTop: '6px', fontStyle: 'italic' }, text: s.note }) : null,
       ),
       el('div.row', { style: { gap: '10px', marginTop: '14px' } },
@@ -200,6 +204,11 @@ export function studentSheet(student, defaultGroupId) {
     const phone = el('input.input', { type: 'tel', value: student?.contactPhone ?? '', placeholder: '0900 000 000' });
     const email = el('input.input', { type: 'email', value: student?.contactEmail ?? '', placeholder: 'nepovinné' });
     const start = el('input.input', { type: 'date', value: student?.startDate ?? todayISO() });
+    const fee = el('input.input', {
+      type: 'number', step: '0.5', min: '0',
+      value: student?.monthlyFee ?? '',
+      placeholder: `klubový poplatok (${db.settings.fee} €)`,
+    });
     const note = el('textarea.textarea', { placeholder: 'napr. hrá za mládežnícky tím' }, student?.note ?? '');
 
     body.append(
@@ -207,7 +216,9 @@ export function studentSheet(student, defaultGroupId) {
       field('Skupina', group),
       field('Kontaktná osoba', contactName),
       el('div.grid2', {}, field('Telefón', phone), field('E-mail', email)),
-      field('Dátum nástupu', start),
+      el('div.grid2', {}, field('Dátum nástupu', start), field('Mesačný poplatok (€)', fee)),
+      el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
+        text: `Prázdne = platí klubový poplatok ${db.settings.fee} €. Vyplňte, len ak má tento žiak inú sumu.` }),
       field('Poznámka', note),
       el('button.btn.btn--block', {
         text: isNew ? 'Pridať žiaka' : 'Uložiť zmeny',
@@ -222,6 +233,7 @@ export function studentSheet(student, defaultGroupId) {
             contactPhone: phone.value.trim(),
             contactEmail: email.value.trim(),
             startDate: start.value || todayISO(),
+            monthlyFee: fee.value === '' ? null : Number(fee.value),
             note: note.value.trim(),
             active: student?.active ?? true,
           });

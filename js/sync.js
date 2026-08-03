@@ -37,12 +37,14 @@ const MAPPERS = {
       contact_name: s.contactName || '', contact_phone: s.contactPhone || '',
       contact_email: s.contactEmail || '', note: s.note || '',
       start_date: s.startDate, active: s.active !== false,
+      monthly_fee: s.monthlyFee === '' || s.monthlyFee === undefined ? null : s.monthlyFee,
     }),
     fromRow: (r) => ({
       id: r.id, name: r.name, groupId: r.group_id,
       contactName: r.contact_name || '', contactPhone: r.contact_phone || '',
       contactEmail: r.contact_email || '', note: r.note || '',
       startDate: r.start_date, active: r.active !== false,
+      monthlyFee: r.monthly_fee === null || r.monthly_fee === undefined ? null : Number(r.monthly_fee),
     }),
   },
   sessions: {
@@ -201,18 +203,41 @@ export async function push() {
           upserts.forEach((o) => done.add(o.key));
         } catch (e) {
           if (isFatal(e)) { hadFatal = true; break; }
-          // dávka zlyhala — skúsime po jednom, nech neblokuje jeden chybný riadok
-          for (const o of upserts) {
+
+          // Databáza nepozná stĺpec = v Supabase chýba migrácia. Aby appka
+          // neprestala fungovať, pošleme zmeny bez neho a povieme to nahlas.
+          const chyba = chybajucaKolonka(e);
+          let vyriesene = false;
+          if (chyba) {
+            state.lastError = `Databáza nepozná stĺpec „${chyba}" — spustite v Supabase najnovší SQL súbor `
+              + 'z priečinka sql/. Zmeny sa zatiaľ ukladajú bez tohto údaja.';
+            const orezane = upserts.map((o) => {
+              const kopia = { ...o.row };
+              delete kopia[chyba];
+              return kopia;
+            });
             try {
-              await upsertRows(table, [o.row], { onConflict: CONFLICT_KEYS[table] });
-              done.add(o.key);
-            } catch (err) {
-              if (isFatal(err)) { hadFatal = true; break; }
-              markFailure(o, err);
-              if (o.attempts >= MAX_ATTEMPTS) done.add(o.key);
-            }
+              await upsertRows(table, orezane, { onConflict: CONFLICT_KEYS[table] });
+              upserts.forEach((o) => done.add(o.key));
+              vyriesene = true;
+              emit();
+            } catch { /* nepomohlo — pokračujeme po jednom nižšie */ }
           }
-          if (hadFatal) break;
+
+          // dávka zlyhala — skúsime po jednom, nech neblokuje jeden chybný riadok
+          if (!vyriesene) {
+            for (const o of upserts) {
+              try {
+                await upsertRows(table, [o.row], { onConflict: CONFLICT_KEYS[table] });
+                done.add(o.key);
+              } catch (err) {
+                if (isFatal(err)) { hadFatal = true; break; }
+                markFailure(o, err);
+                if (o.attempts >= MAX_ATTEMPTS) done.add(o.key);
+              }
+            }
+            if (hadFatal) break;
+          }
         }
       }
 
@@ -256,10 +281,49 @@ function markFailure(op, err) {
   op.attempts = (op.attempts ?? 0) + 1;
   state.lastError = err.message;
   if (op.attempts >= MAX_ATTEMPTS) {
-    state.failed.push({ table: op.table, id: op.row.id, error: err.message, at: new Date().toISOString() });
+    // uložíme aj samotný riadok, aby sa dalo ukázať, o akú zmenu išlo,
+    // a aby sa dala neskôr poslať znova
+    state.failed.push({
+      table: op.table,
+      op: op.op,
+      row: op.row,
+      error: err.message,
+      at: new Date().toISOString(),
+    });
     saveMeta();
     console.error('Zmenu sa nepodarilo odoslať:', op, err);
   }
+}
+
+/** Zaradí späť do fronty už prevedený riadok (bez mapovania). */
+function enqueueRaw(table, op, row) {
+  const key = `${table}:${row.id}`;
+  outbox = outbox.filter((o) => o.key !== key);
+  outbox.push({ key, table, op, row, attempts: 0 });
+}
+
+/** Skúsi znova odoslať zmeny, ktoré predtým zlyhali. */
+export async function retryFailed() {
+  const items = state.failed;
+  state.failed = [];
+  saveMeta();
+  for (const f of items) enqueueRaw(f.table, f.op ?? 'upsert', f.row ?? { id: f.id });
+  saveOutbox();
+  return push();
+}
+
+export function clearFailed() {
+  state.failed = [];
+  saveMeta();
+  emit();
+}
+
+/** Z chyby databázy vytiahne názov chýbajúceho stĺpca (chýbajúca migrácia). */
+function chybajucaKolonka(err) {
+  const text = String(err?.details?.message || err?.message || '');
+  const m = /Could not find the '([\w]+)' column/i.exec(text)
+    || /column "?([\w]+)"? of relation .* does not exist/i.exec(text);
+  return m ? m[1] : null;
 }
 
 /* ---------------- načítanie zo servera ---------------- */

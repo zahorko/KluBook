@@ -181,6 +181,14 @@ export function saveNow() {
   }
 }
 
+/* Zápis je odložený o zlomok sekundy kvôli rýchlosti. Keď appku zavriete
+   alebo prepnete na inú, uložíme okamžite — nech sa posledné ťuknutie
+   nikdy nestratí. */
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', saveNow);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+}
+
 /* ---------- štart ---------- */
 /** Pripraví dáta. V cloude stiahne aktuálny stav zo servera. */
 export async function initStore() {
@@ -440,7 +448,7 @@ export function upsertStudent(data) {
     student = {
       id: uid('stu'), active: true,
       contactName: '', contactPhone: '', contactEmail: '', note: '',
-      startDate: todayISO(), ...data,
+      monthlyFee: null, startDate: todayISO(), ...data,
     };
     db.students.push(student);
   }
@@ -472,6 +480,25 @@ export const paymentFor = (studentId, period) =>
 
 export const paymentStatus = (studentId, period) => paymentFor(studentId, period)?.status ?? 'unpaid';
 
+/** Očakávaný mesačný poplatok žiaka: vlastný, inak klubový. */
+export function studentFee(student) {
+  const s = typeof student === 'string' ? studentById(student) : student;
+  const vlastny = s?.monthlyFee;
+  if (vlastny === null || vlastny === undefined || vlastny === '') return Number(db.settings.fee) || 0;
+  return Number(vlastny) || 0;
+}
+export const hasOwnFee = (student) => {
+  const s = typeof student === 'string' ? studentById(student) : student;
+  return s?.monthlyFee !== null && s?.monthlyFee !== undefined && s?.monthlyFee !== '';
+};
+
+/** Skutočne zaplatená suma za mesiac (0, ak nezaplatené). */
+export function paidAmount(studentId, period) {
+  const p = paymentFor(studentId, period);
+  if (!p || p.status !== 'paid') return 0;
+  return p.amount === null || p.amount === undefined ? studentFee(studentId) : Number(p.amount) || 0;
+}
+
 export function setPayment(studentId, period, status, { amount = null, paidDate = null, note = '' } = {}) {
   let p = paymentFor(studentId, period);
   if (!p) {
@@ -491,7 +518,7 @@ export function setPayment(studentId, period, status, { amount = null, paidDate 
 export function togglePayment(studentId, period) {
   const next = paymentStatus(studentId, period) === 'paid' ? 'unpaid' : 'paid';
   return setPayment(studentId, period, next, {
-    amount: next === 'paid' ? db.settings.fee : null,
+    amount: next === 'paid' ? studentFee(studentId) : null,
     paidDate: next === 'paid' ? todayISO() : null,
   });
 }

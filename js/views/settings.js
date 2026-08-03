@@ -7,9 +7,10 @@ import {
   exportJSON, importJSON, resetAll, clearDemoData, todayISO,
   updateSettings, updateTrainer, applyServerData, syncNow,
   setDevicePin, hasDevicePin, devicePinEmail, lockApp,
+  studentById, groupName,
 } from '../store.js';
 import { changePassword, session } from '../api.js';
-import { state as syncState, onSyncChange, resetSyncState } from '../sync.js';
+import { state as syncState, onSyncChange, resetSyncState, retryFailed, clearFailed } from '../sync.js';
 import { go, refresh } from '../router.js';
 
 export function renderSettings(root, trainer) {
@@ -211,23 +212,79 @@ function syncCard() {
       }),
       syncState.failed.length
         ? el('div', {},
-          el('p.small', { style: { color: 'var(--red)', marginBottom: '6px' },
-            text: `${syncState.failed.length} zmien sa nepodarilo odoslať ani po opakovaných pokusoch.` }),
-          el('button.btn.btn--danger.btn--sm', {
-            text: 'Zabudnúť neodoslané zmeny',
-            onclick: async () => {
-              const ok = await confirmSheet('Zabudnúť zmeny?',
-                'Neodoslané zmeny sa zahodia a appka sa načíta odznova zo servera.',
-                { danger: true, okLabel: 'Zahodiť' });
-              if (!ok) return;
-              resetSyncState();
-              location.reload();
-            },
-          }),
+          el('p.small', { style: { color: 'var(--red)', marginBottom: '8px' },
+            text: `${syncState.failed.length} ${sklonujZmeny(syncState.failed.length)} sa v minulosti nepodarilo odoslať. `
+              + 'Zelená fajka hore znamená, že práve teraz je všetko odoslané — toto je staršia nedoručená zmena.' }),
+          el('div.row.wrap', { style: { gap: '8px' } },
+            el('button.btn.btn--soft.btn--sm', { text: 'Zobraziť podrobnosti', onclick: failedSheet }),
+            el('button.btn.btn--ghost.btn--sm', {
+              text: 'Skúsiť znova',
+              onclick: async () => {
+                toast('Skúšam odoslať…');
+                await retryFailed();
+                if (syncState.failed.length) toast('Časť sa stále nepodarila — pozrite podrobnosti');
+                else toast('Odoslané');
+                refresh();
+              },
+            }),
+            el('button.btn.btn--danger.btn--sm', {
+              text: 'Zabudnúť',
+              onclick: async () => {
+                const ok = await confirmSheet('Zabudnúť zmeny?',
+                  'Zoznam sa vymaže. Ak tie zmeny na serveri chýbajú, zadajte ich znova ručne.',
+                  { danger: true, okLabel: 'Zabudnúť' });
+                if (!ok) return;
+                clearFailed();
+                toast('Zoznam vyčistený');
+                refresh();
+              },
+            }),
+          ),
         )
         : null,
     ),
   );
+}
+
+const sklonujZmeny = (n) => (n === 1 ? 'zmenu' : n < 5 ? 'zmeny' : 'zmien');
+
+/** Ľudský popis toho, čoho sa neodoslaná zmena týkala. */
+function popisZmeny(f) {
+  const r = f.row ?? {};
+  const zmazanie = f.op === 'delete' ? 'Zmazanie — ' : '';
+  const meno = (id) => studentById(id)?.name ?? id ?? '—';
+  switch (f.table) {
+    case 'students': return `${zmazanie}Žiak: ${r.name ?? meno(r.id)}`;
+    case 'sessions': return `${zmazanie}Tréning ${r.date ?? ''} · ${groupName(r.group_id)}`;
+    case 'attendance': return `${zmazanie}Dochádzka: ${meno(r.student_id)}`;
+    case 'payments': return `${zmazanie}Platba: ${meno(r.student_id)} · ${r.period ?? ''}`;
+    case 'trainers': return `${zmazanie}Tréner: ${r.name ?? r.id}`;
+    case 'club_settings': return 'Nastavenia klubu';
+    default: return `${zmazanie}${f.table}`;
+  }
+}
+
+function failedSheet() {
+  sheet('Neodoslané zmeny', (body) => {
+    body.append(
+      el('p.small.muted', { style: { margin: 0 },
+        text: 'Tieto zmeny sa nepodarilo dostať na server. Sú uložené v tomto zariadení — '
+          + 'skúste ich odoslať znova, alebo ich zadajte ručne a zoznam vyčistite.' }),
+      el('div.card.card--flush.list', {},
+        syncState.failed.map((f) =>
+          el('div.item', {},
+            el('span.grow', {},
+              el('div.item__title', { text: popisZmeny(f) }),
+              el('div.item__sub', { style: { color: 'var(--red)' }, text: f.error ?? 'neznáma chyba' }),
+              el('div.tiny.faint', {
+                text: f.at ? new Date(f.at).toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+  });
 }
 
 /* ---------------- tréneri ---------------- */

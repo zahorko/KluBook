@@ -5,16 +5,19 @@ import { el, clear, mount, toast, fmtPeriod, shiftPeriod, downloadCSV, sheet, fi
 import {
   db, sortedGroups, studentsOfGroup, paymentStatus, paymentFor,
   togglePayment, setPayment, todayISO, periodOf, saveNow,
+  studentFee, paidAmount, hasOwnFee,
 } from '../store.js';
 import { refresh } from '../router.js';
 
 const uiState = { period: periodOf(todayISO()) };
 
+/** Sumy bez zbytočných desatinných miest: 25 €, nie 25.00 €. */
+const eur = (n) => (Math.round(n * 100) / 100).toString().replace('.', ',');
+
 export function renderPayments(root) {
   const period = uiState.period;
   const groups = sortedGroups();
 
-  const fee = db.settings.fee;
   const body = el('div.stack-lg');
 
   const numPaid = el('div.stat__num');
@@ -22,19 +25,26 @@ export function renderPayments(root) {
   const numMissing = el('div.stat__num');
   const barFill = el('div.bar__fill.bar__fill--good');
 
-  /** Súhrn hore sa prepočíta po každej zmene platby. */
+  /** Súhrn počíta so skutočne zaplatenými sumami, nie s jednou fixnou. */
   const paintSummary = () => {
     let paidTotal = 0;
     let allTotal = 0;
+    let vybrane = 0;
+    let chyba = 0;
     for (const g of groups) {
       for (const s of studentsOfGroup(g.id)) {
         allTotal++;
-        if (paymentStatus(s.id, period) === 'paid') paidTotal++;
+        if (paymentStatus(s.id, period) === 'paid') {
+          paidTotal++;
+          vybrane += paidAmount(s.id, period);
+        } else {
+          chyba += studentFee(s);
+        }
       }
     }
     numPaid.textContent = `${paidTotal}/${allTotal}`;
-    numCollected.textContent = `${paidTotal * fee} €`;
-    numMissing.textContent = `${(allTotal - paidTotal) * fee} €`;
+    numCollected.textContent = `${eur(vybrane)} €`;
+    numMissing.textContent = `${eur(chyba)} €`;
     barFill.style.width = `${allTotal ? (paidTotal / allTotal) * 100 : 0}%`;
   };
   paintSummary();
@@ -68,11 +78,20 @@ export function renderPayments(root) {
       mount(listBox, students.map((s) => {
         const st = paymentStatus(s.id, period);
         const rec = paymentFor(s.id, period);
-        const row = el('div.item', {},
+        const suma = st === 'paid' ? paidAmount(s.id, period) : studentFee(s);
+        const znovu = () => { paintRows(); paintSummary(); };
+
+        const row = el('div.item', {
+          style: { cursor: 'pointer' },
+          title: 'Ťuknutím upravíte sumu a dátum úhrady',
+          onclick: () => detailSheet(s, period, znovu),
+        },
           el('span.grow', {},
             el('div.item__title', { text: s.name }),
             el('div.item__sub', {
-              text: st === 'paid' && rec?.paidDate ? `zaplatené ${rec.paidDate.split('-').reverse().join('. ')}` : 'čaká na úhradu',
+              text: st === 'paid'
+                ? `zaplatené ${rec?.paidDate ? rec.paidDate.split('-').reverse().join('. ') : ''} · ${eur(suma)} €`
+                : `čaká na úhradu · ${eur(suma)} €${hasOwnFee(s) ? ' (vlastný)' : ''}`,
             }),
           ),
           el('button', {
@@ -81,13 +100,9 @@ export function renderPayments(root) {
               ? { background: 'var(--green-l)', color: 'var(--green)' }
               : { background: 'var(--red-l)', color: 'var(--red)', borderColor: 'transparent' },
             text: st === 'paid' ? '✓ Zaplatené' : '✕ Nezaplatené',
-            onclick: () => { togglePayment(s.id, period); paintRows(); paintSummary(); },
+            onclick: (e) => { e.stopPropagation(); togglePayment(s.id, period); znovu(); },
           }),
         );
-        row.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          detailSheet(s, period, () => { paintRows(); paintSummary(); });
-        });
         return row;
       }));
     };
@@ -100,7 +115,9 @@ export function renderPayments(root) {
           text: 'Všetci zaplatili',
           style: { marginTop: '14px' },
           onclick: () => {
-            for (const s of students) setPayment(s.id, period, 'paid', { amount: fee, paidDate: todayISO() });
+            for (const s of students) {
+              setPayment(s.id, period, 'paid', { amount: studentFee(s), paidDate: todayISO() });
+            }
             toast(`${g.name}: označené ako zaplatené`);
             refresh();
           },
@@ -115,7 +132,7 @@ export function renderPayments(root) {
       text: '⤓ Export platieb do CSV',
       onclick: () => exportPayments(period),
     }),
-    el('p.tiny.faint.center', { text: 'Podržaním (pravým tlačidlom) na žiakovi upravíte sumu a dátum úhrady.' }),
+    el('p.tiny.faint.center', { text: 'Ťuknutím na meno žiaka upravíte sumu, dátum úhrady a poznámku.' }),
   );
 
   mount(root, body);
@@ -128,13 +145,17 @@ function detailSheet(student, period, after) {
       el('option', { value: 'paid', text: 'Zaplatené', selected: rec?.status === 'paid' }),
       el('option', { value: 'unpaid', text: 'Nezaplatené', selected: rec?.status !== 'paid' }),
     );
-    const amount = el('input.input', { type: 'number', step: '0.5', value: rec?.amount ?? db.settings.fee });
+    const amount = el('input.input', { type: 'number', step: '0.5', value: rec?.amount ?? studentFee(student) });
     const paidDate = el('input.input', { type: 'date', value: rec?.paidDate ?? todayISO() });
     const note = el('input.input', { type: 'text', value: rec?.note ?? '', placeholder: 'napr. zaplatené naraz za 3 mesiace' });
 
     box.append(
       field('Stav', status),
       el('div.grid2', {}, field('Suma (€)', amount), field('Dátum úhrady', paidDate)),
+      el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
+        text: hasOwnFee(student)
+          ? `Predvolená suma tohto žiaka: ${eur(studentFee(student))} € (vlastná, nastavená v karte žiaka).`
+          : `Predvolená suma: ${eur(studentFee(student))} € (klubová). Vlastnú sumu žiakovi nastavíte v jeho karte.` }),
       field('Poznámka', note),
       el('button.btn.btn--block', {
         text: 'Uložiť',
