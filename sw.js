@@ -5,7 +5,7 @@
    ========================================================= */
 /* Pri každom nasadení novej verzie zvýšte číslo — prehliadač si tým
    vyžiada čerstvé súbory a starú cache zmaže. */
-const CACHE = 'klubook-v4';
+const CACHE = 'klubook-v5';
 
 const SHELL = [
   './',

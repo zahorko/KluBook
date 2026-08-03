@@ -214,11 +214,29 @@ async function keyFromPin(pin, salt) {
 /* Na jednom zariadení môže mať uložený PIN viac trénerov (klubový počítač).
    Trezory sú uložené pod e-mailom: { email: {salt, iv, data, userId, name, tries} } */
 function vaults() {
+  let raw;
   try {
-    return JSON.parse(localStorage.getItem(VAULT_KEY)) || {};
+    raw = JSON.parse(localStorage.getItem(VAULT_KEY)) || {};
   } catch {
-    return {};
+    raw = {};
   }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+
+  // Staršia verzia ukladala jediný trezor ako {salt, iv, data, email, tries}.
+  // Bez tohto upratania by sa jeho políčka tvárili ako mená trénerov.
+  const clean = {};
+  let zmenene = false;
+  for (const [email, v] of Object.entries(raw)) {
+    const platny = email.includes('@')
+      && v && typeof v === 'object'
+      && typeof v.salt === 'string'
+      && typeof v.iv === 'string'
+      && typeof v.data === 'string';
+    if (platny) clean[email] = v;
+    else zmenene = true;
+  }
+  if (zmenene) localStorage.setItem(VAULT_KEY, JSON.stringify(clean));
+  return clean;
 }
 const saveVaults = (v) => localStorage.setItem(VAULT_KEY, JSON.stringify(v));
 
