@@ -1,0 +1,237 @@
+/* =========================================================
+   Žiaci — zoznam podľa skupín, pridať/upraviť/vymazať, detail
+   ========================================================= */
+import {
+  el, clear, mount, toast, sheet, confirmSheet, field, textInput, selectInput,
+  fmtDate, fmtDayShort, fmtPeriod, monthList,
+} from '../ui.js';
+import {
+  db, sortedGroups, groupName, studentsOfGroup, upsertStudent, deleteStudent, studentById,
+  paymentStatus, togglePayment, todayISO, periodOf, updateStudent,
+} from '../store.js';
+import { go, refresh } from '../router.js';
+
+const uiState = { groupId: null, query: '' };
+
+export function renderStudents(root) {
+  if (!uiState.groupId) uiState.groupId = sortedGroups()[0].id;
+
+  const search = textInput({
+    placeholder: 'Hľadať žiaka…',
+    value: uiState.query,
+    oninput: (e) => { uiState.query = e.target.value; paintList(); },
+  });
+
+  const listBox = el('div');
+
+  const paintList = () => {
+    const q = uiState.query.trim().toLowerCase();
+    const students = q
+      ? db.students.filter((s) => s.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name, 'sk'))
+      : studentsOfGroup(uiState.groupId, { includeInactive: true });
+
+    const period = periodOf(todayISO());
+
+    mount(listBox, 
+      students.length === 0
+        ? el('div.empty', {}, el('span.empty__mark', { text: '♟' }), 'Žiadni žiaci. Pridajte prvého tlačidlom nižšie.')
+        : el('div.card.card--flush.list', {},
+          students.map((s) => {
+            const pay = paymentStatus(s.id, period);
+            return el('button.item', { onclick: () => go(`/ziaci/${s.id}`) },
+              el('span', { class: `dot dot--${pay === 'paid' ? 'paid' : 'unpaid'}` }),
+              el('span.grow', {},
+                el('div.item__title', {}, s.name, s.active ? null : el('span.tag', { text: 'neaktívny', style: { marginLeft: '8px' } })),
+                el('div.item__sub', { text: q ? groupName(s.groupId) : (s.contactPhone || s.contactName || '—') }),
+              ),
+              el('span.chev', { text: '›' }),
+            );
+          }),
+        ),
+    );
+  };
+
+  paintList();
+
+  mount(root, el('div.stack-lg', {},
+    el('div.stack', {},
+      el('div.pillbar', {},
+        sortedGroups().map((g) =>
+          el('button.pill', {
+            text: `${g.name} · ${studentsOfGroup(g.id).length}`,
+            'aria-pressed': String(g.id === uiState.groupId && !uiState.query),
+            onclick: () => { uiState.groupId = g.id; uiState.query = ''; search.value = ''; refresh(); },
+          }),
+        ),
+      ),
+      search,
+      listBox,
+    ),
+    el('button.btn.btn--block', {
+      text: '＋ Pridať žiaka',
+      onclick: () => studentSheet(null, uiState.groupId),
+    }),
+  ));
+}
+
+/* ---------------- detail žiaka ---------------- */
+export function renderStudentDetail(root, studentId) {
+  const s = studentById(studentId);
+  if (!s) { mount(root, el('div.empty', { text: 'Žiak sa nenašiel.' })); return; }
+
+  const periods = monthList(6);
+  const sessions = db.sessions
+    .filter((x) => x.groupId === s.groupId && x.date >= s.startDate)
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const attMap = new Map(db.attendance.filter((a) => a.studentId === s.id).map((a) => [a.sessionId, a]));
+  const relevant = sessions.filter((x) => attMap.has(x.id));
+  const presentCount = relevant.filter((x) => attMap.get(x.id).present).length;
+  const rate = relevant.length ? Math.round((presentCount / relevant.length) * 100) : 0;
+
+  const payBox = el('div.row.wrap', { style: { gap: '6px' } });
+  const paintPay = () => {
+    mount(payBox, 
+      periods.map((p) => {
+        const st = paymentStatus(s.id, p);
+        return el('button', {
+          class: `paycell paycell--${st === 'paid' ? 'paid' : 'unpaid'}`,
+          style: { minWidth: '58px' },
+          text: `${p.slice(5)}/${p.slice(2, 4)}`,
+          title: `${fmtPeriod(p)} — ${st === 'paid' ? 'zaplatené' : 'nezaplatené'} (ťuknutím prepnete)`,
+          onclick: () => { togglePayment(s.id, p); paintPay(); },
+        });
+      }),
+    );
+  };
+  paintPay();
+
+  mount(root, el('div.stack-lg', {},
+    el('div.card.card--warm', {},
+      el('div.row', {},
+        el('span.avatar.avatar--ghost', { text: initials(s.name) }),
+        el('span.grow', {},
+          el('h2', { text: s.name, style: { fontSize: '20px' } }),
+          el('div.small.muted', { text: groupName(s.groupId) }),
+        ),
+      ),
+      el('div.small.muted', { style: { marginTop: '12px' } },
+        el('div', { text: `Kontakt: ${s.contactName || '—'}${s.contactPhone ? ` · ${s.contactPhone}` : ''}` }),
+        s.contactEmail ? el('div', { text: s.contactEmail }) : null,
+        el('div', { text: `V klube od: ${fmtDate(s.startDate)}` }),
+        s.note ? el('div', { style: { marginTop: '6px', fontStyle: 'italic' }, text: s.note }) : null,
+      ),
+      el('div.row', { style: { gap: '10px', marginTop: '14px' } },
+        el('button.btn.btn--soft.btn--sm.grow', { text: 'Upraviť', onclick: () => studentSheet(s) }),
+        el('button.btn.btn--ghost.btn--sm', {
+          text: s.active ? 'Deaktivovať' : 'Aktivovať',
+          onclick: () => {
+            s.active = !s.active;
+            updateStudent(s);
+            toast(s.active ? 'Žiak je aktívny' : 'Žiak je neaktívny');
+            refresh();
+          },
+        }),
+      ),
+    ),
+
+    el('div', {},
+      el('h2.section-title', { text: 'Dochádzka' }),
+      el('div.stats', {},
+        el('div.stat', {}, el('div.stat__num', { text: String(relevant.length) }), el('div.stat__lab', { text: 'tréningov' })),
+        el('div.stat', {}, el('div.stat__num', { text: String(presentCount) }), el('div.stat__lab', { text: 'prítomný' })),
+        el('div.stat', {}, el('div.stat__num', { text: `${rate}%` }), el('div.stat__lab', { text: 'účasť' })),
+      ),
+      el('div.bar', { style: { marginTop: '10px' } },
+        el('div', { class: `bar__fill${rate >= 75 ? ' bar__fill--good' : ''}`, style: { width: `${rate}%` } }),
+      ),
+    ),
+
+    el('div', {},
+      el('h2.section-title', { text: 'Platby (posledných 6 mesiacov)' }),
+      el('div.card', {},
+        payBox,
+        el('p.tiny.faint', { style: { marginBottom: 0 }, text: 'Ťuknutím prepnete zaplatené / nezaplatené.' }),
+      ),
+    ),
+
+    el('div', {},
+      el('h2.section-title', { text: 'História tréningov' }),
+      relevant.length === 0
+        ? el('div.empty', { text: 'Zatiaľ žiadne záznamy.' })
+        : el('div.card.card--flush.list', {},
+          relevant.slice(0, 20).map((x) => {
+            const present = attMap.get(x.id).present;
+            return el('div.item', {},
+              el('span.grow', {},
+                el('div.item__title', { text: fmtDayShort(x.date) }),
+                el('div.item__sub', { text: `${x.startTime}–${x.endTime ?? '…'}` }),
+              ),
+              el('span', { class: `tag tag--${present ? 'paid' : 'unpaid'}`, text: present ? 'prítomný' : 'chýbal' }),
+            );
+          }),
+        ),
+    ),
+
+    el('button.btn.btn--danger.btn--block', {
+      text: 'Vymazať žiaka',
+      onclick: async () => {
+        const ok = await confirmSheet('Vymazať žiaka?',
+          `${s.name} sa vymaže vrátane dochádzky a platieb. Ak chcete zachovať históriu, použite radšej „Deaktivovať".`,
+          { danger: true, okLabel: 'Vymazať' });
+        if (!ok) return;
+        deleteStudent(s.id);
+        toast('Žiak vymazaný');
+        go('/ziaci');
+      },
+    }),
+  ));
+}
+
+/* ---------------- formulár žiaka ---------------- */
+export function studentSheet(student, defaultGroupId) {
+  const isNew = !student;
+  sheet(isNew ? 'Nový žiak' : 'Upraviť žiaka', (body, close) => {
+    const name = textInput({ value: student?.name ?? '', placeholder: 'Meno a priezvisko' });
+    const group = selectInput(sortedGroups().map((g) => ({ value: g.id, label: g.name })), {
+      value: student?.groupId ?? defaultGroupId ?? sortedGroups()[0].id,
+    });
+    const contactName = textInput({ value: student?.contactName ?? '', placeholder: 'Meno rodiča / žiaka' });
+    const phone = el('input.input', { type: 'tel', value: student?.contactPhone ?? '', placeholder: '0900 000 000' });
+    const email = el('input.input', { type: 'email', value: student?.contactEmail ?? '', placeholder: 'nepovinné' });
+    const start = el('input.input', { type: 'date', value: student?.startDate ?? todayISO() });
+    const note = el('textarea.textarea', { placeholder: 'napr. hrá za mládežnícky tím' }, student?.note ?? '');
+
+    body.append(
+      field('Meno *', name),
+      field('Skupina', group),
+      field('Kontaktná osoba', contactName),
+      el('div.grid2', {}, field('Telefón', phone), field('E-mail', email)),
+      field('Dátum nástupu', start),
+      field('Poznámka', note),
+      el('button.btn.btn--block', {
+        text: isNew ? 'Pridať žiaka' : 'Uložiť zmeny',
+        style: { marginTop: '8px' },
+        onclick: () => {
+          if (!name.value.trim()) { toast('Zadajte meno žiaka'); return; }
+          upsertStudent({
+            id: student?.id,
+            name: name.value.trim(),
+            groupId: group.value,
+            contactName: contactName.value.trim(),
+            contactPhone: phone.value.trim(),
+            contactEmail: email.value.trim(),
+            startDate: start.value || todayISO(),
+            note: note.value.trim(),
+            active: student?.active ?? true,
+          });
+          close();
+          toast(isNew ? 'Žiak pridaný' : 'Uložené');
+          refresh();
+        },
+      }),
+    );
+  });
+}
+
+const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('');
