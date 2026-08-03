@@ -35,13 +35,23 @@ export function session() {
   }
 }
 const storeSession = (data) => {
+  const prev = session();
   const s = {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
     expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
-    user: { id: data.user?.id, email: data.user?.email },
+    user: {
+      id: data.user?.id ?? prev?.user?.id,
+      email: data.user?.email ?? prev?.user?.email,
+    },
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+  // DÔLEŽITÉ: Supabase pri obnove vydá nový token a starý zneplatní.
+  // Ak máme v pamäti kľúč od trezoru, hneď doň uložíme ten nový —
+  // inak by v trezore ostal mŕtvy token a prihlásenie by po čase padlo.
+  if (unlockedKey && s.refreshToken) {
+    rewriteVault(s).catch((e) => console.warn('Trezor sa nepodarilo aktualizovať:', e));
+  }
   return s;
 };
 export const clearSession = () => localStorage.removeItem(SESSION_KEY);
@@ -69,7 +79,9 @@ export async function signIn(email, password) {
     email: email.trim().toLowerCase(),
     password,
   });
-  return storeSession(data);
+  const s = storeSession(data);
+  markUnlocked();
+  return s;
 }
 
 export async function refreshSession() {
@@ -81,6 +93,7 @@ export async function refreshSession() {
 
 export async function signOut() {
   const s = session();
+  const email = s?.user?.email;
   if (s?.accessToken) {
     await fetch(`${baseUrl()}/auth/v1/logout`, {
       method: 'POST',
@@ -90,8 +103,10 @@ export async function signOut() {
       },
     }).catch(() => {});
   }
+  clearVault(email);   // najprv trezor — potrebuje e-mail zo session
   clearSession();
-  clearVault();
+  localStorage.removeItem(UNLOCK_KEY);
+  unlockedKey = null;
 }
 
 export async function changePassword(newPassword) {
@@ -196,73 +211,145 @@ async function keyFromPin(pin, salt) {
   );
 }
 
-export function vault() {
+/* Na jednom zariadení môže mať uložený PIN viac trénerov (klubový počítač).
+   Trezory sú uložené pod e-mailom: { email: {salt, iv, data, userId, name, tries} } */
+function vaults() {
   try {
-    return JSON.parse(localStorage.getItem(VAULT_KEY)) || null;
+    return JSON.parse(localStorage.getItem(VAULT_KEY)) || {};
   } catch {
-    return null;
+    return {};
   }
 }
-export const hasVault = () => Boolean(vault());
-export const clearVault = () => localStorage.removeItem(VAULT_KEY);
+const saveVaults = (v) => localStorage.setItem(VAULT_KEY, JSON.stringify(v));
+
+/** Zoznam účtov s uloženým PIN-om na tomto zariadení. */
+export const vaultAccounts = () =>
+  Object.entries(vaults()).map(([email, v]) => ({ email, name: v.name || email, initials: v.initials || '?' }));
+
+export const hasVault = () => vaultAccounts().length > 0;
+
+export function clearVault(email = session()?.user?.email) {
+  const all = vaults();
+  if (email) delete all[email];
+  saveVaults(all);
+  if (email === session()?.user?.email) unlockedKey = null;
+}
+export const clearAllVaults = () => { localStorage.removeItem(VAULT_KEY); unlockedKey = null; };
+
+/* Kľúč odvodený z PIN-u držíme v pamäti, kým je appka otvorená.
+   Vďaka tomu vieme do trezoru priebežne ukladať obnovené tokeny. */
+let unlockedKey = null;
+let unlockedSalt = null;
+
+/** Prepíše trezor aktuálneho účtu novým tokenom (kľúč už máme v pamäti). */
+async function rewriteVault(s) {
+  if (!unlockedKey || !s?.refreshToken || !s.user?.email) return;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, unlockedKey, enc.encode(s.refreshToken));
+  const all = vaults();
+  const prev = all[s.user.email] ?? {};
+  all[s.user.email] = {
+    ...prev,
+    salt: unlockedSalt,
+    iv: b64(iv),
+    data: b64(ct),
+    userId: s.user.id ?? prev.userId,
+    tries: 0,
+  };
+  saveVaults(all);
+}
 
 /** Uloží aktuálne prihlásenie pod PIN. */
-export async function createVault(pin) {
+export async function createVault(pin, { name = '', initials = '' } = {}) {
   const s = session();
   if (!s?.refreshToken) throw new ApiError('Nie ste prihlásený.', 401);
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await keyFromPin(pin, salt);
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(s.refreshToken));
-  localStorage.setItem(VAULT_KEY, JSON.stringify({
-    salt: b64(salt),
-    iv: b64(iv),
-    data: b64(ct),
-    email: s.user?.email ?? '',
-    tries: 0,
-  }));
+  unlockedKey = await keyFromPin(pin, salt);
+  unlockedSalt = b64(salt);
+
+  const all = vaults();
+  all[s.user.email] = { ...(all[s.user.email] ?? {}), name, initials, userId: s.user.id, tries: 0 };
+  saveVaults(all);
+
+  await rewriteVault(s);
+  markUnlocked();
 }
 
-/** Odomkne PIN-om a obnoví prihlásenie. Vracia session. */
-export async function openVault(pin) {
-  const v = vault();
-  if (!v) throw new ApiError('V tomto zariadení nie je uložené prihlásenie.', 401);
+/** Odomkne účet PIN-om. Funguje aj bez signálu. */
+export async function openVault(email, pin) {
+  const all = vaults();
+  const v = all[email];
+  if (!v) throw new ApiError('Pre tento účet nie je v zariadení uložený PIN.', 401);
 
   let refreshToken;
+  let key;
   try {
-    const key = await keyFromPin(pin, unb64(v.salt));
+    key = await keyFromPin(pin, unb64(v.salt));
     const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(v.iv) }, key, unb64(v.data));
     refreshToken = dec.decode(plain);
   } catch {
     v.tries = (v.tries ?? 0) + 1;
     if (v.tries >= MAX_PIN_TRIES) {
-      clearVault();
+      delete all[email];
+      saveVaults(all);
       throw new ApiError('Priveľa nesprávnych pokusov. Prihláste sa e-mailom a heslom.', 401, null, 'BAD_PIN');
     }
-    localStorage.setItem(VAULT_KEY, JSON.stringify(v));
+    saveVaults(all);
     throw new ApiError(`Nesprávny PIN. Zostáva pokusov: ${MAX_PIN_TRIES - v.tries}`, 401, null, 'BAD_PIN');
   }
 
-  // PIN sedel — vymeníme uložený token za čerstvé prihlásenie.
-  // Ak ho server odmietne (napr. vypršala platnosť), uložený PIN je
-  // nepoužiteľný a tréner sa musí raz prihlásiť heslom.
-  let data;
+  // PIN sedel. Token zapíšeme ako prihlásenie a necháme ho obnoviť —
+  // ak sme offline, appka beží ďalej z lokálnej kópie a obnoví sa neskôr.
+  unlockedKey = key;
+  unlockedSalt = v.salt;
+  localStorage.setItem(SESSION_KEY, JSON.stringify({
+    accessToken: null,
+    refreshToken,
+    expiresAt: 0,
+    user: { id: v.userId, email },
+  }));
+  markUnlocked();
+
   try {
-    data = await authRequest('token?grant_type=refresh_token', { refresh_token: refreshToken });
+    return await refreshSession();
   } catch (e) {
     if (e.status === 400 || e.status === 401) {
-      clearVault();
-      throw new ApiError('Prihlásenie vypršalo. Prihláste sa raz heslom a PIN si nastavte znova.', 401, null, 'SESSION_EXPIRED');
+      delete all[email];
+      saveVaults(all);
+      clearSession();
+      unlockedKey = null;
+      throw new ApiError(
+        'Prihlásenie vypršalo. Prihláste sa raz heslom a PIN si nastavte znova.',
+        401, null, 'SESSION_EXPIRED',
+      );
     }
-    throw e;
+    // sieťová chyba — pokračujeme offline s uloženým tokenom
+    return session();
   }
-  const s = storeSession(data);
-  v.tries = 0;
-  localStorage.setItem(VAULT_KEY, JSON.stringify(v));
-  if (data.refresh_token && data.refresh_token !== refreshToken) await createVault(pin);
-  return s;
 }
 
-export const vaultEmail = () => vault()?.email ?? '';
+/* ---------------- zámok ---------------- */
+/* Po dlhšej nečinnosti (alebo po ručnom zamknutí) appka pýta PIN znova. */
+const UNLOCK_KEY = 'klubook.unlockedAt';
+const AUTO_LOCK_HOURS = 12;
+
+const markUnlocked = () => localStorage.setItem(UNLOCK_KEY, String(Date.now()));
+
+/** Zamkne appku: zmaže prihlásenie zo zariadenia, trezor s PIN-om ostáva. */
+export function lock() {
+  clearSession();
+  localStorage.removeItem(UNLOCK_KEY);
+  unlockedKey = null;
+  unlockedSalt = null;
+}
+
+export function isLocked() {
+  if (!hasVault()) return false;              // bez PIN-u sa rieši heslom
+  if (!session()?.refreshToken) return true;  // nie je čím pokračovať
+  const at = Number(localStorage.getItem(UNLOCK_KEY) || 0);
+  return !at || Date.now() - at > AUTO_LOCK_HOURS * 3600 * 1000;
+}
+
+export const vaultEmail = () => session()?.user?.email ?? vaultAccounts()[0]?.email ?? '';
 
 export { isCloud };

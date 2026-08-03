@@ -26,7 +26,7 @@ Prepnutie medzi nimi = vyplnenie dvoch riadkov v `js/config.js`. Nič iné.
 ## Spustenie lokálne
 
 ```bash
-cd ~/Documents/sachklub-app && python3 -m http.server 4173
+cd ~/Documents/klubook && python3 -m http.server 4173
 ```
 
 Otvorte <http://localhost:4173>. (Cez `file://` to nepôjde — appka používa ES moduly

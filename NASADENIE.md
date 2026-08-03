@@ -101,7 +101,7 @@ namiesto demo PIN-u.
 
 1. <https://github.com> → **New repository** → názov napr. `klubook` → **Private** → *Create*.
 2. Na stránke nového repozitára kliknite **uploading an existing file**.
-3. Pretiahnite do okna **celý obsah** priečinka `sachklub-app` (všetky súbory aj priečinky).
+3. Pretiahnite do okna **celý obsah** priečinka `klubook` (všetky súbory aj priečinky).
 4. **Commit changes**.
 
 Prečo GitHub: je to záloha kódu a zároveň zdroj, z ktorého bude web automaticky aktualizovaný.
@@ -167,6 +167,23 @@ V `config.js` nesmú byť na konci žiadne bodky.
 ### Appka ukazuje výber trénerov a PIN 1234
 Je v demo režime, teda `js/config.js` nie je vyplnený správne. Appka na to od tejto verzie
 sama upozorní červeným rámčekom na prihlasovacej obrazovke — text v ňom hovorí, čo opraviť.
+
+### Chcem na jednom počítači prepínať trénerov
+Použite **Viac → Zamknúť**. Appka sa vráti na prihlasovaciu obrazovku a zobrazí zoznam
+trénerov, ktorí sa na tomto zariadení už prihlásili — každý má vlastný PIN. Nový tréner
+sa pridá cez *Prihlásiť iného trénera* (e-mail a heslo, potom si nastaví svoj PIN).
+
+**„Odhlásiť sa"** je niečo iné: zmaže vaše prihlásenie aj PIN z tohto zariadenia, takže
+nabudúce budete potrebovať heslo. Používajte ho, keď zariadenie opúšťate nadobro
+(cudzí počítač, predaj telefónu).
+
+### Po čase ma to odhlásilo a pýta si heslo
+Toto bola chyba v starších verziách (trezor si držal už neplatný token) a je opravená.
+Ak by sa to zopakovalo, znamená to, že prihlásenie naozaj vypršalo — stačí sa raz prihlásiť
+heslom a nastaviť PIN znova.
+
+Appka sa **zámerne zamkne po 12 hodinách nečinnosti** a pýta PIN. Nie je to odhlásenie,
+dáta ani prihlásenie sa nestrácajú.
 
 ### „Účet ešte nie je aktivovaný"
 Prihlásenie prebehlo, ale účet nie je v tabuľke `trainers`. Chýba **krok 4**.

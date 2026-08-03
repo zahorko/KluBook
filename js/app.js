@@ -4,7 +4,7 @@
 import { el, mount, toast } from './ui.js';
 import {
   db, initStore, currentTrainer, openSession, isCloud,
-  applyServerData, syncNow, logout,
+  applyServerData, syncNow, logout, isLocked,
 } from './store.js';
 import { state as syncState, onSyncChange, startAutoSync } from './sync.js';
 import { currentRoute, onRefresh, go } from './router.js';
@@ -39,7 +39,8 @@ function render() {
   stopClock();
   const trainer = currentTrainer();
 
-  if (!trainer) {
+  // zamknuté = po dlhšej nečinnosti alebo po ručnom zamknutí pýtame PIN
+  if (!trainer || isLocked()) {
     renderLogin(app);
     return;
   }

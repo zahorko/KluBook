@@ -244,8 +244,8 @@ export async function signInWithPassword(email, password) {
 }
 
 /** Cloud: rýchle odomknutie PIN-om uloženým v tomto zariadení. */
-export async function unlockWithPin(pin) {
-  await api.openVault(pin);
+export async function unlockWithPin(email, pin) {
+  await api.openVault(email, pin);
   try {
     const data = await syncNow();
     if (data) applyServerData(data);
@@ -253,10 +253,17 @@ export async function unlockWithPin(pin) {
   return currentTrainer();
 }
 
-export const setDevicePin = (pin) => api.createVault(pin);
+export const setDevicePin = (pin, profil = {}) => api.createVault(pin, profil);
 export const hasDevicePin = () => api.hasVault();
+export const devicePinAccounts = () => api.vaultAccounts();
 export const devicePinEmail = () => api.vaultEmail();
-export const forgetDevicePin = () => api.clearVault();
+export const forgetDevicePin = (email) => api.clearVault(email);
+
+/** Zamkne appku — vráti na PIN, prihlásenie ostáva uložené pod PIN-om. */
+export function lockApp() {
+  api.lock();
+}
+export const isLocked = () => isCloud() && api.isLocked();
 
 export async function logout() {
   if (isCloud()) {

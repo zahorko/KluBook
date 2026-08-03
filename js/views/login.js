@@ -11,7 +11,7 @@ import { el, mount, toast, field } from '../ui.js';
 import { configProblem } from '../config.js';
 import {
   db, isCloud, demoLogin, signInWithPassword, unlockWithPin,
-  setDevicePin, hasDevicePin, devicePinEmail, forgetDevicePin,
+  setDevicePin, hasDevicePin, devicePinAccounts, forgetDevicePin,
 } from '../store.js';
 import { refresh } from '../router.js';
 
@@ -114,7 +114,7 @@ export function renderLogin(root) {
           onclick: async () => {
             if (!/^\d{4}$/.test(p1.value)) { error.textContent = 'PIN musí mať 4 číslice.'; return; }
             if (p1.value !== p2.value) { error.textContent = 'PIN-y sa nezhodujú.'; return; }
-            await setDevicePin(p1.value);
+            await setDevicePin(p1.value, { name: trainer?.name ?? '', initials: trainer?.initials ?? '?' });
             toast('PIN nastavený');
             finish();
           },
@@ -125,10 +125,37 @@ export function renderLogin(root) {
     p1.focus();
   };
 
-  const showPinUnlock = () => {
+  /* Na klubovom počítači môže mať PIN uložený viac trénerov. */
+  const showAccountPicker = () => {
+    mount(inner,
+      header('KluBook', db.settings.motto),
+      configWarning(),
+      el('p.field__label', { text: 'Prihlásiť sa ako', style: { textAlign: 'center' } }),
+      el('div.trainer-pick', {},
+        devicePinAccounts().map((acc) =>
+          el('button.trainer-pick__btn', { onclick: () => showPinUnlock(acc) },
+            el('span.avatar', { text: acc.initials }),
+            el('span.grow', {},
+              el('div', { text: acc.name, style: { fontWeight: '500' } }),
+              el('div.tiny.faint', { text: acc.email }),
+            ),
+            el('span.chev', { text: '›' }),
+          ),
+        ),
+      ),
+      el('button.btn.btn--ghost.btn--block', {
+        style: { marginTop: '14px' },
+        text: '＋ Prihlásiť iného trénera',
+        onclick: showPasswordForm,
+      }),
+    );
+  };
+
+  const showPinUnlock = (account) => {
     let pin = '';
     const dots = el('div.pinrow');
     const error = el('p.small.center', { style: { color: 'var(--red)', minHeight: '18px' } });
+    const viacUctov = devicePinAccounts().length > 1;
 
     const paint = (err = false) => {
       mount(dots, [0, 1, 2, 3].map((i) =>
@@ -137,7 +164,7 @@ export function renderLogin(root) {
 
     const submit = async () => {
       try {
-        await unlockWithPin(pin);
+        await unlockWithPin(account.email, pin);
         location.hash = '#/trening';
         refresh();
       } catch (e) {
@@ -163,23 +190,30 @@ export function renderLogin(root) {
 
     mount(inner,
       el('div.center', {},
-        el('div.login__logo', { text: '♟' }),
-        el('h1.login__title', { text: 'KluBook', style: { fontSize: '24px' } }),
-        el('p.tiny.faint', { text: devicePinEmail() || 'Zadajte svoj PIN' }),
+        el('span.avatar', { text: account.initials, style: { margin: '0 auto' } }),
+        el('h1.login__title', { text: account.name, style: { fontSize: '22px' } }),
+        el('p.tiny.faint', { text: account.email }),
       ),
       dots,
       error,
       el('div.keypad', {},
         ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((n) =>
           el('button.key', { text: n, onclick: () => press(n) })),
-        el('button.key.key--soft', { text: 'Heslo', onclick: showPasswordForm }),
+        el('button.key.key--soft', {
+          text: viacUctov ? 'Späť' : 'Heslo',
+          onclick: viacUctov ? showAccountPicker : showPasswordForm,
+        }),
         el('button.key', { text: '0', onclick: () => press('0') }),
         el('button.key.key--soft', { text: '⌫', onclick: () => { pin = pin.slice(0, -1); paint(); } }),
       ),
       el('button.btn.btn--ghost.btn--block', {
         style: { marginTop: '18px' },
         text: 'Zabudnutý PIN — prihlásiť sa heslom',
-        onclick: () => { forgetDevicePin(); showPasswordForm(); },
+        onclick: () => { forgetDevicePin(account.email); showPasswordForm(); },
+      }),
+      viacUctov ? null : el('button.btn.btn--ghost.btn--block', {
+        text: 'Prihlásiť iného trénera',
+        onclick: showPasswordForm,
       }),
     );
     paint();
@@ -270,7 +304,13 @@ export function renderLogin(root) {
     window.addEventListener('keydown', onKey);
   };
 
-  if (!isCloud()) showTrainerPick();
-  else if (hasDevicePin()) showPinUnlock();
-  else showPasswordForm();
+  if (!isCloud()) {
+    showTrainerPick();
+  } else if (hasDevicePin()) {
+    const ucty = devicePinAccounts();
+    if (ucty.length > 1) showAccountPicker();
+    else showPinUnlock(ucty[0]);
+  } else {
+    showPasswordForm();
+  }
 }

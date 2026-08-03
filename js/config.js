@@ -22,7 +22,7 @@ export const CONFIG = {
   // Settings → API Keys → Publishable key, začína 'sb_publishable_...'
   // Staršie projekty tu majú „anon public" kľúč začínajúci 'eyJ...' — funguje rovnako.
   // NIKDY sem nedávajte Secret key ('sb_secret_...') ani service_role.
-  supabaseKey: 'sb_publishable_bzA2Ockd0EB0BfRq7mQ5lw_oFpijADf',
+  supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqeGxpb2tyenFsd2Fxa2FuYmlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3NzE3ODIsImV4cCI6MjEwMTM0Nzc4Mn0.hM1-pg_ibhAPRWJWsqjz1MHX2EXr7x785Z5chQ_423Y',
 
   // ako často sa appka pozrie na server, či niekto niečo zmenil (v sekundách)
   syncIntervalSeconds: 60,

@@ -6,7 +6,7 @@ import {
   db, isCloud, saveNow, logout, initialsOf, uid, newSalt, hashPin, setDemoPin,
   exportJSON, importJSON, resetAll, clearDemoData, todayISO,
   updateSettings, updateTrainer, applyServerData, syncNow,
-  setDevicePin, hasDevicePin, devicePinEmail,
+  setDevicePin, hasDevicePin, devicePinEmail, lockApp,
 } from '../store.js';
 import { changePassword, session } from '../api.js';
 import { state as syncState, onSyncChange, resetSyncState } from '../sync.js';
@@ -50,12 +50,24 @@ function accountCard(trainer) {
           ? el('button.btn.btn--ghost.btn--sm', { text: 'Zmeniť heslo', onclick: passwordSheet })
           : null,
       ),
+      isCloud() && hasDevicePin()
+        ? el('button.btn.btn--soft.btn--block', {
+          text: '🔒 Zamknúť (odovzdať zariadenie kolegovi)',
+          onclick: () => {
+            lockApp();
+            toast('Zamknuté');
+            go('/');
+            refresh();
+          },
+        })
+        : null,
       el('button.btn.btn--ghost.btn--block', {
         text: 'Odhlásiť sa',
         onclick: async () => {
           const ok = await confirmSheet('Odhlásiť sa?',
             isCloud()
-              ? 'Z tohto zariadenia sa vymaže prihlásenie aj PIN. Dáta ostávajú v databáze klubu.'
+              ? 'Z tohto zariadenia sa vymaže vaše prihlásenie aj PIN — nabudúce budete potrebovať heslo. '
+                + 'Ak chcete len prepnúť trénera, použite radšej „Zamknúť". Dáta ostávajú v databáze klubu.'
               : 'Vrátite sa na prihlasovaciu obrazovku.',
             { okLabel: 'Odhlásiť' });
           if (!ok) return;
