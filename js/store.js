@@ -555,6 +555,56 @@ export const paymentFor = (studentId, period) =>
 
 export const paymentStatus = (studentId, period) => paymentFor(studentId, period)?.status ?? 'unpaid';
 
+/* ---------- žiaci, ktorí prestávajú chodiť ---------- */
+
+/** Koľkokrát po sebe žiak chýbal (od posledného tréningu dozadu). */
+export function absenceStreak(studentId) {
+  const zaznamy = new Map(
+    db.attendance.filter((a) => a.studentId === studentId).map((a) => [a.sessionId, a]),
+  );
+  if (!zaznamy.size) return { count: 0, lastPresent: null, lastAbsence: null, total: 0 };
+
+  // len ukončené tréningy — v prebiehajúcom sú všetci predvolene prítomní
+  const treningy = db.sessions
+    .filter((s) => zaznamy.has(s.id) && s.endTime)
+    .sort((a, b) => `${b.date}${b.startTime}`.localeCompare(`${a.date}${a.startTime}`));
+
+  let count = 0;
+  let lastPresent = null;
+  let lastAbsence = null;
+  for (const t of treningy) {
+    if (zaznamy.get(t.id).present) { lastPresent = t.date; break; }
+    if (!lastAbsence) lastAbsence = t.date;
+    count++;
+  }
+  return { count, lastPresent, lastAbsence, total: treningy.length };
+}
+
+/** Od koľkých vymeškaní za sebou appka upozorní. */
+export const ABSENCE_ALERT = 3;
+
+/**
+ * Žiaci, ktorí chýbali aspoň `hranica`-krát po sebe a ešte sa im nikto neozval.
+ * Presne toto je chvíľa, keď má zmysel zavolať rodičom — kým dieťa neodíde nadobro.
+ */
+export function droppingStudents(hranica = ABSENCE_ALERT) {
+  return db.students
+    .filter((s) => s.active)
+    .map((s) => ({ student: s, ...absenceStreak(s.id) }))
+    .filter((x) => x.count >= hranica)
+    .filter((x) => !x.student.contactedAt || x.student.contactedAt < x.lastAbsence)
+    .sort((a, b) => b.count - a.count || a.student.name.localeCompare(b.student.name, 'sk'));
+}
+
+/** Zaznamená, že sa trénerom rodičom ozval — upozornenie zmizne do ďalšieho vymeškania. */
+export function markContacted(studentId, date = todayISO()) {
+  const s = studentById(studentId);
+  if (!s) return;
+  s.contactedAt = date;
+  queueUpsert('students', s);
+  saveNow();
+}
+
 /* ---------- obdobia pre prehľady ---------- */
 
 /** Od ktorého mesiaca má zmysel zobrazovať platby.

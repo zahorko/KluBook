@@ -10,6 +10,7 @@ import {
   startSession, endSession,
   addManualSession, deleteSession, studentsOfGroup, attendanceOfSession, setAttendance,
   paymentStatus, durationMinutes, todayISO, nowHM, periodOf, sessionsInRange, updateSession,
+  droppingStudents, markContacted,
 } from '../store.js';
 import { go, refresh } from '../router.js';
 
@@ -30,8 +31,58 @@ export function renderTraining(root, trainer) {
   if (live) box.append(liveCard(live, trainer));
   else box.append(startCard(trainer));
 
+  const odchadzajuci = droppingStudents();
+  if (odchadzajuci.length) box.append(droppingCard(odchadzajuci));
+
   box.append(recentSessions(trainer));
   mount(root, box);
+}
+
+/** Žiaci, ktorí niekoľkokrát po sebe nedorazili — kým neodídu nadobro. */
+function droppingCard(list) {
+  return el('div', {},
+    el('h2.section-title', { text: 'Prestávajú chodiť' }),
+    el('div.card.stack', { style: { background: 'var(--terracotta-l)', borderColor: 'transparent' } },
+      el('p.small', { style: { margin: 0, color: 'var(--terracotta-d)' },
+        text: 'Títo žiaci vymeškali niekoľko tréningov za sebou. Oplatí sa ozvať rodičom skôr, než prestanú chodiť úplne.' }),
+      el('div.stack', {},
+        list.map(({ student, count, lastPresent }) =>
+          el('div.card.row', { style: { gap: '8px', padding: '10px 12px' } },
+            el('button.grow', {
+              style: { background: 'none', border: 0, textAlign: 'left', cursor: 'pointer', padding: 0 },
+              onclick: () => go(`/ziaci/${student.id}`),
+            },
+              el('div', { style: { fontWeight: '500' }, text: student.name }),
+              el('div.item__sub', {
+                // bezrodovo — appka nevie, či ide o chlapca alebo dievča
+                text: `${sklonuj(count, '1 vymeškaný tréning', `${count} vymeškané tréningy`, `${count} vymeškaných tréningov`)} po sebe`
+                  + (lastPresent ? ` · naposledy tu ${fmtDayShort(lastPresent)}` : ' · zatiaľ ani raz'),
+              }),
+            ),
+            student.contactPhone
+              ? el('a.iconbtn', {
+                href: `tel:${student.contactPhone.replace(/\s/g, '')}`,
+                title: `Zavolať: ${student.contactName || student.contactPhone}`,
+                style: { textDecoration: 'none' },
+              }, '📞')
+              : null,
+            el('button.btn.btn--ghost.btn--sm', {
+              text: 'Vybavené',
+              onclick: async () => {
+                const ok = await confirmSheet('Ozvali ste sa?',
+                  `Upozornenie na žiaka ${student.name} zmizne. Objaví sa znova, ak bude chýbať ďalej.`,
+                  { okLabel: 'Áno, vybavené' });
+                if (!ok) return;
+                markContacted(student.id);
+                toast('Zapísané');
+                refresh();
+              },
+            }),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 /** Upozornenie na tréningy bez zapísaného konca. */

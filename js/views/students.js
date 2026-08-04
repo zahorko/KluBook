@@ -9,6 +9,7 @@ import {
   db, sortedGroups, groupName, studentsOfGroup, upsertStudent, deleteStudent, studentById,
   paymentStatus, togglePayment, todayISO, periodOf, updateStudent,
   studentFee, hasOwnFee, periodsUpToNow, trackingSince,
+  absenceStreak, ABSENCE_ALERT, markContacted,
 } from '../store.js';
 import { go, refresh } from '../router.js';
 
@@ -39,10 +40,15 @@ export function renderStudents(root) {
         : el('div.card.card--flush.list', {},
           students.map((s) => {
             const pay = paymentStatus(s.id, period);
+            const vymeska = absenceStreak(s.id).count;
             return el('button.item', { onclick: () => go(`/ziaci/${s.id}`) },
               el('span', { class: `dot dot--${pay === 'paid' ? 'paid' : 'unpaid'}` }),
               el('span.grow', {},
-                el('div.item__title', {}, s.name, s.active ? null : el('span.tag', { text: 'neaktívny', style: { marginLeft: '8px' } })),
+                el('div.item__title', {}, s.name,
+                  s.active ? null : el('span.tag', { text: 'neaktívny', style: { marginLeft: '8px' } }),
+                  vymeska >= ABSENCE_ALERT
+                    ? el('span.tag.tag--unpaid', { text: `chýba ${vymeska}×`, style: { marginLeft: '8px' } })
+                    : null),
                 el('div.item__sub', { text: q ? groupName(s.groupId) : (s.contactPhone || s.contactName || '—') }),
               ),
               el('span.chev', { text: '›' }),
