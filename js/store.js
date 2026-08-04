@@ -392,7 +392,16 @@ export function studentsOfGroup(groupId, { includeInactive = false } = {}) {
     .sort((a, b) => a.name.localeCompare(b.name, 'sk'));
 }
 
-export const openSession = () => db.sessions.find((s) => !s.endTime) ?? null;
+/** Práve prebiehajúci tréning = dnešný, bez zapísaného konca. */
+export const openSession = () =>
+  db.sessions.find((s) => !s.endTime && s.date === todayISO()) ?? null;
+
+/** Staršie tréningy, ktoré niekto zabudol ukončiť.
+    Bez tohto rozlíšenia by včerajší neukončený tréning blokoval začatie nového. */
+export const unfinishedSessions = () =>
+  db.sessions
+    .filter((s) => !s.endTime && s.date !== todayISO())
+    .sort((a, b) => b.date.localeCompare(a.date));
 
 export function sessionsInRange(from, to, { trainerId, groupId } = {}) {
   return db.sessions

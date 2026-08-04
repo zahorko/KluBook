@@ -83,12 +83,12 @@ export function renderStudentDetail(root, studentId) {
   // od nástupu žiaka (nie skôr, než klub eviduje platby) po dnešok
   const zaciatok = [periodOf(s.startDate), trackingSince()].sort().at(-1);
   const periods = periodsUpToNow(zaciatok, 12);
-  const sessions = db.sessions
-    .filter((x) => x.groupId === s.groupId && x.date >= s.startDate)
-    .sort((a, b) => b.date.localeCompare(a.date));
-
+  // História sa viaže na dochádzku, nie na aktuálnu skupinu — inak by žiakovi
+  // po prechode medzi skupinami zmizli všetky staršie tréningy aj percento účasti.
   const attMap = new Map(db.attendance.filter((a) => a.studentId === s.id).map((a) => [a.sessionId, a]));
-  const relevant = sessions.filter((x) => attMap.has(x.id));
+  const relevant = db.sessions
+    .filter((x) => attMap.has(x.id))
+    .sort((a, b) => b.date.localeCompare(a.date));
   const presentCount = relevant.filter((x) => attMap.get(x.id).present).length;
   const rate = relevant.length ? Math.round((presentCount / relevant.length) * 100) : 0;
 

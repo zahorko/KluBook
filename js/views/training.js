@@ -6,7 +6,8 @@ import {
   fmtDateLong, fmtDayShort, fmtHours,
 } from '../ui.js';
 import {
-  db, sortedGroups, groupName, trainerName, openSession, startSession, endSession,
+  db, sortedGroups, groupName, trainerName, openSession, unfinishedSessions,
+  startSession, endSession,
   addManualSession, deleteSession, studentsOfGroup, attendanceOfSession, setAttendance,
   paymentStatus, durationMinutes, todayISO, nowHM, periodOf, sessionsInRange, updateSession,
 } from '../store.js';
@@ -21,11 +22,53 @@ export function renderTraining(root, trainer) {
   const live = openSession();
   const box = el('div.stack-lg');
 
+  // neukončené tréningy z minulých dní rieši samostatné upozornenie —
+  // nesmú blokovať začatie dnešného
+  const zabudnute = unfinishedSessions();
+  if (zabudnute.length) box.append(unfinishedCard(zabudnute));
+
   if (live) box.append(liveCard(live, trainer));
   else box.append(startCard(trainer));
 
   box.append(recentSessions(trainer));
   mount(root, box);
+}
+
+/** Upozornenie na tréningy bez zapísaného konca. */
+function unfinishedCard(sessions) {
+  return el('div.card', { style: { background: 'var(--red-l)', borderColor: 'transparent' } },
+    el('div', { style: { fontWeight: '600', marginBottom: '4px' },
+      text: sessions.length === 1 ? '⚠ Neukončený tréning' : `⚠ ${sessions.length} neukončené tréningy` }),
+    el('p.small', { style: { margin: '0 0 12px' },
+      text: 'Chýba čas ukončenia, takže sa nezaráta do odučených hodín. Doplňte ho alebo tréning zmažte.' }),
+    el('div.stack', {},
+      sessions.map((s) =>
+        el('div.row', { style: { gap: '8px' } },
+          el('span.grow.small', {}, el('strong', { text: fmtDayShort(s.date) }), ` · ${groupName(s.groupId)} · od ${s.startTime}`),
+          el('button.btn.btn--sm', { text: 'Doplniť', onclick: () => editTimesSheet(s, navrhKoniec(s.startTime)) }),
+          el('button.btn.btn--ghost.btn--sm', {
+            text: 'Zmazať',
+            onclick: async () => {
+              const ok = await confirmSheet('Zmazať tréning?',
+                `${fmtDayShort(s.date)} · ${groupName(s.groupId)}. Zmaže sa aj dochádzka k nemu.`,
+                { danger: true, okLabel: 'Zmazať' });
+              if (!ok) return;
+              deleteSession(s.id);
+              toast('Tréning zmazaný');
+              refresh();
+            },
+          }),
+        ),
+      ),
+    ),
+  );
+}
+
+/** Rozumný odhad konca tréningu — hodina a pol po začiatku. */
+function navrhKoniec(startTime) {
+  const [h, m] = startTime.split(':').map(Number);
+  const spolu = h * 60 + m + 90;
+  return `${String(Math.floor(spolu / 60) % 24).padStart(2, '0')}:${String(spolu % 60).padStart(2, '0')}`;
 }
 
 function startCard(trainer) {
@@ -242,11 +285,11 @@ export function renderSession(root, trainer, sessionId) {
 }
 
 /* ---------------- hárky ---------------- */
-function editTimesSheet(session) {
+function editTimesSheet(session, navrhovanyKoniec = null) {
   sheet('Upraviť tréning', (body, close) => {
     const date = el('input.input', { type: 'date', value: session.date });
     const start = el('input.input', { type: 'time', value: session.startTime });
-    const end = el('input.input', { type: 'time', value: session.endTime ?? '' });
+    const end = el('input.input', { type: 'time', value: session.endTime ?? navrhovanyKoniec ?? '' });
     const group = selectInput(sortedGroups().map((g) => ({ value: g.id, label: g.name })), { value: session.groupId });
     const trainer = selectInput(db.trainers.map((t) => ({ value: t.id, label: t.name })), { value: session.trainerId });
 
