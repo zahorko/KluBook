@@ -56,6 +56,8 @@ const GROUPS = [
   { id: 'grp_zac', name: 'Začiatočníci', short: 'Z', order: 1 },
   { id: 'grp_mie', name: 'Mierne pokročilí', short: 'M', order: 2 },
   { id: 'grp_pok', name: 'Pokročilí', short: 'P', order: 3 },
+  { id: 'grp_mie_on', name: 'Mierne pokročilí online', short: 'M online', order: 4 },
+  { id: 'grp_pok_on', name: 'Pokročilí online', short: 'P online', order: 5 },
 ];
 
 const DEFAULT_SETTINGS = {
@@ -92,8 +94,8 @@ const DEMO_STUDENTS = [
   ['Lukáš Petrík', 'grp_mie', 'Andrea Petríková', '0917 553 208', '2025-01-14'],
   ['Viktória Tóthová', 'grp_mie', 'Miroslav Tóth', '0940 118 662', '2025-09-16'],
   ['Samuel Dzurko', 'grp_mie', 'Lenka Dzurková', '0903 909 445', '2025-11-04'],
-  ['Michal Repka', 'grp_pok', '—', '0905 447 001', '2023-09-12'],
-  ['Klára Sedláková', 'grp_pok', 'Roman Sedlák', '0918 220 774', '2023-09-12'],
+  ['Michal Repka', 'grp_pok', '—', '0905 447 001', '2023-09-12', 'grp_pok_on'],
+  ['Klára Sedláková', 'grp_pok', 'Roman Sedlák', '0918 220 774', '2023-09-12', 'grp_pok_on'],
   ['Oliver Bartoš', 'grp_pok', 'Silvia Bartošová', '0911 662 038', '2024-02-06'],
   ['Dominik Uhrín', 'grp_pok', '—', '0949 330 187', '2024-09-17'],
 ];
@@ -101,8 +103,9 @@ const DEMO_STUDENTS = [
 function seedDemo() {
   const d = emptyDb();
   d.demo = true;
-  d.students = DEMO_STUDENTS.map(([name, groupId, contactName, contactPhone, startDate]) => ({
-    id: uid('stu'), name, groupId, contactName, contactPhone,
+  d.students = DEMO_STUDENTS.map(([name, groupId, contactName, contactPhone, startDate, extra]) => ({
+    id: uid('stu'), name, groupId, groupIds: extra ? [groupId, extra] : [groupId],
+    contactName, contactPhone,
     contactEmail: '', note: '', startDate, active: true,
   }));
 
@@ -111,6 +114,7 @@ function seedDemo() {
     { groupId: 'grp_mie', weekday: 4, start: '16:00', end: '17:30', trainerId: 'trn_jz' },
     { groupId: 'grp_pok', weekday: 4, start: '17:30', end: '19:00', trainerId: 'trn_jz' },
     { groupId: 'grp_pok', weekday: 1, start: '18:00', end: '19:30', trainerId: 'trn_jb' },
+    { groupId: 'grp_pok_on', weekday: 3, start: '19:00', end: '20:00', trainerId: 'trn_jb' },
   ];
   const today = new Date();
   for (let back = 56; back >= 0; back--) {
@@ -125,7 +129,7 @@ function seedDemo() {
         startTime: p.start, endTime: p.end, note: '', createdAt: new Date(day).toISOString(),
       };
       d.sessions.push(s);
-      for (const st of d.students.filter((x) => x.groupId === p.groupId && x.startDate <= date)) {
+      for (const st of d.students.filter((x) => x.groupIds.includes(p.groupId) && x.startDate <= date)) {
         d.attendance.push({
           id: uid('att'), sessionId: s.id, studentId: st.id,
           present: Math.random() > 0.18, at: new Date(day).toISOString(),
@@ -386,10 +390,32 @@ export const studentById = (id) => db.students.find((s) => s.id === id);
 
 export const sortedGroups = () => [...db.groups].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
+/** Skupiny, do ktorých žiak patrí. Prvá je hlavná. */
+export const studentGroupIds = (student) => {
+  const zoznam = Array.isArray(student?.groupIds) && student.groupIds.length
+    ? student.groupIds
+    : [student?.groupId].filter(Boolean);
+  return zoznam;
+};
+export const primaryGroupId = (student) => studentGroupIds(student)[0] ?? null;
+export const studentGroupNames = (student) => studentGroupIds(student).map(groupName);
+export const isInGroup = (student, groupId) => studentGroupIds(student).includes(groupId);
+
 export function studentsOfGroup(groupId, { includeInactive = false } = {}) {
   return db.students
-    .filter((s) => s.groupId === groupId && (includeInactive || s.active))
+    .filter((s) => isInGroup(s, groupId) && (includeInactive || s.active))
     .sort((a, b) => a.name.localeCompare(b.name, 'sk'));
+}
+
+/** Každý žiak práve raz — pre platby, kde je žiak jeden bez ohľadu na počet skupín. */
+export function allStudents({ includeInactive = false } = {}) {
+  return db.students
+    .filter((s) => includeInactive || s.active)
+    .sort((a, b) => {
+      const ga = groupById(primaryGroupId(a))?.order ?? 99;
+      const gb = groupById(primaryGroupId(b))?.order ?? 99;
+      return ga - gb || a.name.localeCompare(b.name, 'sk');
+    });
 }
 
 /** Práve prebiehajúci tréning = dnešný, bez zapísaného konca. */
@@ -512,6 +538,14 @@ export function upsertStudent(data) {
   const { id, ...zvysok } = data;
   for (const k of Object.keys(zvysok)) {
     if (zvysok[k] === undefined) delete zvysok[k];
+  }
+
+  // groupId a groupIds musia vždy sedieť — groupId je hlavná skupina
+  if (Array.isArray(zvysok.groupIds)) {
+    zvysok.groupIds = [...new Set(zvysok.groupIds.filter(Boolean))];
+    if (zvysok.groupIds.length) zvysok.groupId = zvysok.groupIds[0];
+  } else if (zvysok.groupId) {
+    zvysok.groupIds = [zvysok.groupId];
   }
 
   let student = id ? db.students.find((x) => x.id === id) : null;

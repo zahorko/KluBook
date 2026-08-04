@@ -39,6 +39,7 @@ const MAPPERS = {
       start_date: s.startDate, active: s.active !== false,
       monthly_fee: s.monthlyFee === '' || s.monthlyFee === undefined ? null : s.monthlyFee,
       contacted_at: s.contactedAt ?? null,
+      group_ids: Array.isArray(s.groupIds) && s.groupIds.length ? s.groupIds : [s.groupId],
     }),
     fromRow: (r) => ({
       id: r.id, name: r.name, groupId: r.group_id,
@@ -47,6 +48,7 @@ const MAPPERS = {
       startDate: r.start_date, active: r.active !== false,
       monthlyFee: r.monthly_fee === null || r.monthly_fee === undefined ? null : Number(r.monthly_fee),
       contactedAt: r.contacted_at ?? null,
+      groupIds: Array.isArray(r.group_ids) && r.group_ids.length ? r.group_ids : [r.group_id],
     }),
   },
   sessions: {

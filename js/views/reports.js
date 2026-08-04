@@ -7,7 +7,7 @@ import {
 import {
   db, sortedGroups, groupName, trainerName, studentsOfGroup, sessionsInRange,
   durationMinutes, attendanceOfSession, paymentStatus, todayISO, periodOf,
-  periodsUpToNow,
+  periodsUpToNow, primaryGroupId, allStudents, studentGroupNames,
 } from '../store.js';
 import { refresh } from '../router.js';
 
@@ -211,8 +211,9 @@ function paymentsReport() {
   const periods = periodsUpToNow();
 
   // prázdne skupiny do prehľadu nepatria — len by zavadzali
+  // žiaka vypisujeme pod hlavnou skupinou — inak by bol v tabuľke dvakrát
   const skupiny = sortedGroups()
-    .map((g) => ({ g, ziaci: studentsOfGroup(g.id) }))
+    .map((g) => ({ g, ziaci: studentsOfGroup(g.id).filter((s) => primaryGroupId(s) === g.id) }))
     .filter(({ ziaci }) => ziaci.length);
 
   if (!skupiny.length) {
@@ -263,11 +264,10 @@ function paymentsReport() {
     el('button.btn.btn--ghost.btn--block', {
       text: '⤓ Export histórie platieb do CSV',
       onclick: () => {
-        const rows = [['Skupina', 'Žiak', ...periods.map(fmtPeriod)]];
-        for (const g of sortedGroups()) {
-          for (const s of studentsOfGroup(g.id)) {
-            rows.push([g.name, s.name, ...periods.map((p) => (paymentStatus(s.id, p) === 'paid' ? 'zaplatené' : 'nezaplatené'))]);
-          }
+        const rows = [['Skupiny', 'Žiak', ...periods.map(fmtPeriod)]];
+        for (const s of allStudents()) {
+          rows.push([studentGroupNames(s).join(' + '), s.name,
+            ...periods.map((p) => (paymentStatus(s.id, p) === 'paid' ? 'zaplatené' : 'nezaplatené'))]);
         }
         downloadCSV(`platby-historia-${todayISO()}.csv`, rows);
         toast('CSV stiahnuté');

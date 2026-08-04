@@ -5,7 +5,7 @@ import { el, clear, mount, toast, fmtPeriod, shiftPeriod, downloadCSV, sheet, fi
 import {
   db, sortedGroups, studentsOfGroup, paymentStatus, paymentFor,
   togglePayment, setPayment, todayISO, periodOf, saveNow,
-  studentFee, paidAmount, hasOwnFee, currentTrainer,
+  studentFee, paidAmount, hasOwnFee, currentTrainer, allStudents, primaryGroupId,
 } from '../store.js';
 import { refresh } from '../router.js';
 import { contactSheet, maKontakt, textPlatba } from '../contact.js';
@@ -35,15 +35,15 @@ export function renderPayments(root) {
     let allTotal = 0;
     let vybrane = 0;
     let chyba = 0;
-    for (const g of groups) {
-      for (const s of studentsOfGroup(g.id)) {
-        allTotal++;
-        if (paymentStatus(s.id, period) === 'paid') {
-          paidTotal++;
-          vybrane += paidAmount(s.id, period);
-        } else {
-          chyba += studentFee(s);
-        }
+    // allStudents() = každý žiak raz, aj keď chodí do viacerých skupín —
+    // inak by sa jeho poplatok počítal dvakrát
+    for (const s of allStudents()) {
+      allTotal++;
+      if (paymentStatus(s.id, period) === 'paid') {
+        paidTotal++;
+        vybrane += paidAmount(s.id, period);
+      } else {
+        chyba += studentFee(s);
       }
     }
     numPaid.textContent = `${paidTotal}/${allTotal}`;
@@ -74,7 +74,8 @@ export function renderPayments(root) {
   );
 
   for (const g of groups) {
-    const students = studentsOfGroup(g.id);
+    // žiaka ukazujeme pod jeho hlavnou skupinou, nech nie je v zozname dvakrát
+    const students = studentsOfGroup(g.id).filter((s) => primaryGroupId(s) === g.id);
     if (!students.length) continue;
     const listBox = el('div.card.card--flush.list');
 
@@ -196,12 +197,12 @@ function detailSheet(student, period, after) {
 }
 
 function exportPayments(period) {
-  const rows = [['Skupina', 'Žiak', 'Obdobie', 'Stav', 'Suma', 'Dátum úhrady', 'Poznámka']];
-  for (const g of sortedGroups()) {
-    for (const s of studentsOfGroup(g.id)) {
+  const rows = [['Skupiny', 'Žiak', 'Obdobie', 'Stav', 'Suma', 'Dátum úhrady', 'Poznámka']];
+  {
+    for (const s of allStudents()) {
       const p = paymentFor(s.id, period);
       rows.push([
-        g.name, s.name, period,
+        studentGroupNames(s).join(' + '), s.name, period,
         p?.status === 'paid' ? 'zaplatené' : 'nezaplatené',
         p?.amount ?? '', p?.paidDate ?? '', p?.note ?? '',
       ]);

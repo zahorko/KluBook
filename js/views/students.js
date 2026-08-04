@@ -3,13 +3,14 @@
    ========================================================= */
 import {
   el, clear, mount, toast, sheet, confirmSheet, field, textInput, selectInput,
-  fmtDate, fmtDayShort, fmtPeriod,
+  fmtDate, fmtDayShort, fmtPeriod, fmtHours,
 } from '../ui.js';
 import {
   db, sortedGroups, groupName, studentsOfGroup, upsertStudent, deleteStudent, studentById,
   paymentStatus, togglePayment, todayISO, periodOf, updateStudent,
   studentFee, hasOwnFee, periodsUpToNow, trackingSince,
   absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer,
+  studentGroupIds, studentGroupNames, durationMinutes,
 } from '../store.js';
 import { go, refresh } from '../router.js';
 import { contactSheet, telHref, maKontakt, textVymeskavanie } from '../contact.js';
@@ -122,7 +123,7 @@ export function renderStudentDetail(root, studentId) {
         el('span.avatar.avatar--ghost', { text: initials(s.name) }),
         el('span.grow', {},
           el('h2', { text: s.name, style: { fontSize: '20px' } }),
-          el('div.small.muted', { text: groupName(s.groupId) }),
+          el('div.small.muted', { text: studentGroupNames(s).join(' · ') }),
         ),
       ),
       el('div.small.muted', { style: { marginTop: '12px' } },
@@ -175,6 +176,23 @@ export function renderStudentDetail(root, studentId) {
       el('div.bar', { style: { marginTop: '10px' } },
         el('div', { class: `bar__fill${rate >= 75 ? ' bar__fill--good' : ''}`, style: { width: `${rate}%` } }),
       ),
+      // rozpis podľa skupín — nech je vidieť, koľko toho odtrénoval online a koľko naživo
+      studentGroupIds(s).length > 1
+        ? el('div.card.card--flush.list', { style: { marginTop: '12px' } },
+          studentGroupIds(s).map((gid) => {
+            const vSkupine = relevant.filter((x) => x.groupId === gid);
+            const bol = vSkupine.filter((x) => attMap.get(x.id).present);
+            const minuty = bol.reduce((sum, x) => sum + durationMinutes(x), 0);
+            return el('div.item', {},
+              el('span.grow', {},
+                el('div.item__title', { text: groupName(gid) }),
+                el('div.item__sub', { text: `${bol.length} z ${vSkupine.length} tréningov` }),
+              ),
+              el('span.small.mono', { text: fmtHours(minuty) }),
+            );
+          }),
+        )
+        : null,
     ),
 
     el('div', {},
@@ -194,10 +212,13 @@ export function renderStudentDetail(root, studentId) {
             const present = attMap.get(x.id).present;
             return el('div.item', {},
               el('span.grow', {},
-                el('div.item__title', { text: fmtDayShort(x.date) }),
-                el('div.item__sub', { text: `${x.startTime}–${x.endTime ?? '…'}` }),
+                el('div.item__title', {}, fmtDayShort(x.date),
+                  el('span.faint', { style: { fontWeight: '400' }, text: ` · ${groupName(x.groupId)}` })),
+                el('div.item__sub', {
+                  text: `${x.startTime}–${x.endTime ?? '…'}${x.endTime ? ` · ${fmtHours(durationMinutes(x))}` : ''}`,
+                }),
               ),
-              el('span', { class: `tag tag--${present ? 'paid' : 'unpaid'}`, text: present ? 'prítomný' : 'chýbal' }),
+              el('span', { class: `tag tag--${present ? 'paid' : 'unpaid'}`, text: present ? 'bol' : 'chýbal' }),
             );
           }),
         ),
@@ -223,9 +244,25 @@ export function studentSheet(student, defaultGroupId) {
   const isNew = !student;
   sheet(isNew ? 'Nový žiak' : 'Upraviť žiaka', (body, close) => {
     const name = textInput({ value: student?.name ?? '', placeholder: 'Meno a priezvisko' });
-    const group = selectInput(sortedGroups().map((g) => ({ value: g.id, label: g.name })), {
-      value: student?.groupId ?? defaultGroupId ?? sortedGroups()[0].id,
-    });
+    // žiak môže chodiť do viacerých skupín (napr. Pokročilí + Pokročilí online)
+    const zvolene = new Set(
+      student ? studentGroupIds(student) : [defaultGroupId ?? sortedGroups()[0].id],
+    );
+    const groupBox = el('div.stack', { style: { gap: '6px' } },
+      sortedGroups().map((g) =>
+        el('label.row', {
+          style: { gap: '10px', padding: '10px 12px', border: '1px solid var(--cream-line)', borderRadius: 'var(--r-md)', background: 'var(--white)', cursor: 'pointer' },
+        },
+          el('input', {
+            type: 'checkbox',
+            checked: zvolene.has(g.id),
+            style: { width: '20px', height: '20px', accentColor: 'var(--terracotta)' },
+            onchange: (e) => { e.target.checked ? zvolene.add(g.id) : zvolene.delete(g.id); },
+          }),
+          el('span.grow', { text: g.name }),
+        ),
+      ),
+    );
     const contactName = textInput({ value: student?.contactName ?? '', placeholder: 'Meno rodiča / žiaka' });
     const phone = el('input.input', { type: 'tel', value: student?.contactPhone ?? '', placeholder: '0900 000 000' });
     const email = el('input.input', { type: 'email', value: student?.contactEmail ?? '', placeholder: 'nepovinné' });
@@ -239,7 +276,7 @@ export function studentSheet(student, defaultGroupId) {
 
     mount(body,
       field('Meno *', name),
-      field('Skupina', group),
+      field('Skupiny (môže byť vo viacerých)', groupBox),
       field('Kontaktná osoba', contactName),
       el('div.grid2', {}, field('Telefón', phone), field('E-mail', email)),
       el('div.grid2', {}, field('Dátum nástupu', start), field('Mesačný poplatok (€)', fee)),
@@ -251,10 +288,11 @@ export function studentSheet(student, defaultGroupId) {
         style: { marginTop: '8px' },
         onclick: () => {
           if (!name.value.trim()) { toast('Zadajte meno žiaka'); return; }
+          if (!zvolene.size) { toast('Vyberte aspoň jednu skupinu'); return; }
           upsertStudent({
             id: student?.id,
             name: name.value.trim(),
-            groupId: group.value,
+            groupIds: [...zvolene],
             contactName: contactName.value.trim(),
             contactPhone: phone.value.trim(),
             contactEmail: email.value.trim(),
