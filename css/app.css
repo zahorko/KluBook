@@ -180,8 +180,15 @@ a { color: var(--terracotta); }
 .iconbtn:hover { background: var(--cream-deep); }
 
 /* ---------- pills / chips ---------- */
+/* Na dotykových zariadeniach sa lišta posúva prstom. Na počítači kolieskom
+   myši vodorovne posúvať nejde a scrollbar je skrytý — tam sa preto pilulky
+   radšej zalomia do viacerých riadkov, aby sa žiadna skupina neschovala. */
 .pillbar { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none; }
 .pillbar::-webkit-scrollbar { display: none; }
+
+@media (min-width: 700px), (hover: hover) and (pointer: fine) {
+  .pillbar { flex-wrap: wrap; overflow-x: visible; }
+}
 .pill {
   appearance: none; cursor: pointer; white-space: nowrap;
   padding: 8px 15px; border-radius: var(--r-full);
