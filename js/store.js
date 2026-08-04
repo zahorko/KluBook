@@ -15,7 +15,10 @@
    ========================================================= */
 import { isCloud } from './config.js';
 import * as api from './api.js';
-import { queueUpsert, queueDelete, queueDeleteMany, pull, push, syncNow } from './sync.js';
+import {
+  queueUpsert, queueDelete, queueDeleteMany, pull, push, syncNow,
+  pendingRows, pendingDeletedIds,
+} from './sync.js';
 
 const KEY = 'klubook.db.v1';
 const LEGACY_KEY = '1skke.db.v1';
@@ -167,6 +170,35 @@ function load() {
 
 export const db = load();
 
+/**
+ * Jednorazová oprava po chybe staršej verzie, ktorá vedela vytvoriť žiaka
+ * bez identifikátora (taký záznam databáza odmietla). Žiakovi doplníme
+ * identifikátor a priradíme mu osirené záznamy, ak sa to dá spoľahlivo určiť.
+ */
+function opravPoskodeneZaznamy() {
+  const bezId = db.students.filter((s) => !s.id);
+  if (!bezId.length) return { opraveni: 0, zahodene: 0 };
+
+  for (const s of bezId) s.id = uid('stu');
+
+  let zahodene = 0;
+  const jedinyZiak = bezId.length === 1 ? bezId[0].id : null;
+
+  const preved = (zoznam, kluc) => zoznam.filter((r) => {
+    if (r[kluc]) return true;
+    if (jedinyZiak) { r[kluc] = jedinyZiak; if (!r.id) r.id = uid('fix'); return true; }
+    zahodene++;
+    return false;
+  });
+
+  db.attendance = preved(db.attendance, 'studentId');
+  db.payments = preved(db.payments, 'studentId');
+
+  saveNow();
+  console.warn(`KluBook: opravených ${bezId.length} žiakov bez identifikátora, zahodených ${zahodene} osirených záznamov.`);
+  return { opraveni: bezId.length, zahodene };
+}
+
 let saveTimer = null;
 export function save() {
   clearTimeout(saveTimer);
@@ -184,6 +216,9 @@ export function saveNow() {
 /* Zápis je odložený o zlomok sekundy kvôli rýchlosti. Keď appku zavriete
    alebo prepnete na inú, uložíme okamžite — nech sa posledné ťuknutie
    nikdy nestratí. */
+/* Oprava sa spúšťa až tu — potrebuje pripravené ukladanie. */
+export const opravaPriStarte = opravPoskodeneZaznamy();
+
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', saveNow);
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
@@ -192,6 +227,14 @@ if (typeof window !== 'undefined') {
 /* ---------- štart ---------- */
 /** Pripraví dáta. V cloude stiahne aktuálny stav zo servera. */
 export async function initStore() {
+  // opravené záznamy treba poslať na server, doteraz tam nikdy nedorazili
+  if (isCloud() && opravaPriStarte.opraveni) {
+    for (const s of db.students) queueUpsert('students', s);
+    for (const t of db.sessions) queueUpsert('sessions', t);
+    for (const a of db.attendance) queueUpsert('attendance', a);
+    for (const p of db.payments) queueUpsert('payments', p);
+  }
+
   if (!isCloud()) {
     await ensureDemoTrainers();
     return { mode: 'demo' };
@@ -208,15 +251,27 @@ export async function initStore() {
   }
 }
 
-/** Prepíše lokálnu kópiu dátami zo servera. */
+/** Prepíše lokálnu kópiu dátami zo servera.
+    Záznamy, ktoré ešte čakajú vo fronte na odoslanie, ostávajú zachované —
+    inak by trénerovi po synchronizácii zmizlo to, čo práve zapísal. */
 export function applyServerData(data) {
   if (!data) return;
+
+  const zluc = (tabulka, zoServera) => {
+    const cakajuce = pendingRows(tabulka);
+    if (!cakajuce.length) return zoServera;
+    const podlaId = new Map(zoServera.map((r) => [r.id, r]));
+    for (const r of cakajuce) podlaId.set(r.id, r);
+    const zmazane = new Set(pendingDeletedIds(tabulka));
+    return [...podlaId.values()].filter((r) => !zmazane.has(r.id));
+  };
+
   db.trainers = data.trainers;
   db.groups = data.groups?.length ? data.groups : GROUPS;
-  db.students = data.students;
-  db.sessions = data.sessions;
-  db.attendance = data.attendance;
-  db.payments = data.payments;
+  db.students = zluc('students', data.students);
+  db.sessions = zluc('sessions', data.sessions);
+  db.attendance = zluc('attendance', data.attendance);
+  db.payments = zluc('payments', data.payments);
   if (data.settings) db.settings = { ...DEFAULT_SETTINGS, ...data.settings };
   db.demo = false;
   saveNow();
@@ -440,15 +495,24 @@ export function setAttendance(sessionId, studentId, present) {
 }
 
 export function upsertStudent(data) {
-  let student;
-  if (data.id) {
-    student = db.students.find((x) => x.id === data.id);
-    Object.assign(student, data);
+  // POZOR: `id` vyberáme zvlášť. Formulár posiela pri novom žiakovi
+  // `id: undefined` a keby sa dáta rozbalili cez vygenerované id,
+  // prepísali by ho na prázdno — a taký záznam databáza odmietne.
+  const { id, ...zvysok } = data;
+  for (const k of Object.keys(zvysok)) {
+    if (zvysok[k] === undefined) delete zvysok[k];
+  }
+
+  let student = id ? db.students.find((x) => x.id === id) : null;
+  if (student) {
+    Object.assign(student, zvysok);
   } else {
     student = {
-      id: uid('stu'), active: true,
+      id: id || uid('stu'),
+      active: true,
       contactName: '', contactPhone: '', contactEmail: '', note: '',
-      monthlyFee: null, startDate: todayISO(), ...data,
+      monthlyFee: null, startDate: todayISO(),
+      ...zvysok,
     };
     db.students.push(student);
   }

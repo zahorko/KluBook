@@ -185,6 +185,12 @@ heslom a nastaviť PIN znova.
 Appka sa **zámerne zamkne po 12 hodinách nečinnosti** a pýta PIN. Nie je to odhlásenie,
 dáta ani prihlásenie sa nestrácajú.
 
+### V neodoslaných zmenách je hláška o identifikátore
+Staršia verzia appky vedela vytvoriť žiaka bez identifikátora — databáza taký záznam odmietla
+a po synchronizácii žiak zmizol. Verzia od 4. 8. 2026 to opravuje a poškodených žiakov
+pri spustení sama doplní a odošle. Staré položky v zozname neodoslaných zmien už odoslať
+nejdú — po kontrole, že žiaci aj platby v appke sedia, ich pokojne dajte *Zabudnúť*.
+
 ### „Účet ešte nie je aktivovaný"
 Prihlásenie prebehlo, ale účet nie je v tabuľke `trainers`. Chýba **krok 4**.
 

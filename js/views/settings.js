@@ -248,6 +248,28 @@ function syncCard() {
 
 const sklonujZmeny = (n) => (n === 1 ? 'zmenu' : n < 5 ? 'zmeny' : 'zmien');
 
+/** Databázové hlášky preložené do reči, s ktorou sa dá niečo spraviť. */
+function vysvetliChybu(text = '') {
+  const t = String(text);
+  if (/null value in column "id"/i.test(t)) {
+    return 'Záznam nemá identifikátor — vznikol chybou staršej verzie appky. Zadajte ho znova a tento zoznam vyčistite.';
+  }
+  if (/null value in column "(student_id|session_id)"/i.test(t)) {
+    return 'Záznam odkazuje na žiaka alebo tréning bez identifikátora — tiež následok tej istej chyby. Zadajte ho znova a zoznam vyčistite.';
+  }
+  if (/violates foreign key/i.test(t)) {
+    return 'Súvisiaci záznam v databáze chýba — žiak alebo tréning bol medzitým zmazaný.';
+  }
+  if (/row-level security/i.test(t)) {
+    return 'Databáza zápis odmietla. Skontrolujte, či je váš účet v tabuľke trainers a má active = true.';
+  }
+  if (/duplicate key/i.test(t)) return 'Taký záznam už v databáze existuje.';
+  if (/Could not find the '(\w+)' column/i.test(t)) {
+    return 'V databáze chýba stĺpec — spustite najnovší SQL súbor z priečinka sql/.';
+  }
+  return t;
+}
+
 /** Ľudský popis toho, čoho sa neodoslaná zmena týkala. */
 function popisZmeny(f) {
   const r = f.row ?? {};
@@ -275,7 +297,7 @@ function failedSheet() {
           el('div.item', {},
             el('span.grow', {},
               el('div.item__title', { text: popisZmeny(f) }),
-              el('div.item__sub', { style: { color: 'var(--red)' }, text: f.error ?? 'neznáma chyba' }),
+              el('div.item__sub', { style: { color: 'var(--red)' }, text: vysvetliChybu(f.error) }),
               el('div.tiny.faint', {
                 text: f.at ? new Date(f.at).toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
               }),

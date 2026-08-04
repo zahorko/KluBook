@@ -135,6 +135,13 @@ const saveOutbox = () => {
 /** Zaradí vloženie/úpravu riadku. Novšia zmena prepíše staršiu. */
 export function queueUpsert(table, obj) {
   const row = MAPPERS[table].toRow(obj);
+  if (row.id === null || row.id === undefined || row.id === '') {
+    // Bez identifikátora by riadok databáza odmietla a zablokoval by frontu.
+    console.error('Zmena bez identifikátora — neodosielam:', table, obj);
+    state.lastError = 'Záznam bez identifikátora sa nepodarilo pripraviť na odoslanie.';
+    emit();
+    return;
+  }
   const key = `${table}:${row.id}`;
   outbox = outbox.filter((o) => o.key !== key);
   outbox.push({ key, table, op: 'upsert', row, attempts: 0 });
@@ -157,6 +164,17 @@ export function queueDeleteMany(table, ids) {
 }
 
 export const pendingCount = () => outbox.length;
+
+/** Zmeny čakajúce vo fronte, prevedené späť do podoby, akej rozumie appka.
+    Používa sa pri sťahovaní zo servera, aby neodoslané záznamy nezmizli. */
+export function pendingRows(table) {
+  return outbox
+    .filter((o) => o.table === table && o.op === 'upsert')
+    .map((o) => MAPPERS[table].fromRow(o.row));
+}
+export function pendingDeletedIds(table) {
+  return outbox.filter((o) => o.table === table && o.op === 'delete').map((o) => o.row.id);
+}
 
 /* ---------------- odoslanie na server ---------------- */
 let pushTimer = null;
@@ -367,13 +385,12 @@ export async function pull() {
   }
 }
 
-/** Odošle čakajúce zmeny a potom stiahne aktuálny stav. */
+/** Odošle čakajúce zmeny a potom stiahne aktuálny stav.
+    Sťahujeme aj vtedy, keď sa niečo odoslať nepodarilo — zmeny čakajúce
+    vo fronte pri zlučovaní neprepíšeme (viď applyServerData v store.js).
+    Inak by jediná zaseknutá zmena zablokovala celú appku. */
 export async function syncNow() {
-  const pushed = await push();
-  if (!pushed && outbox.length) {
-    // nepodarilo sa odoslať — nesťahujeme, nech neprepíšeme lokálne zmeny
-    return null;
-  }
+  await push().catch(() => {});
   return pull();
 }
 
