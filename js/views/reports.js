@@ -210,32 +210,50 @@ function paymentsReport() {
   // len mesiace, odkedy klub platby naozaj eviduje — prázdna minulosť nikoho nezaujíma
   const periods = periodsUpToNow();
 
+  // prázdne skupiny do prehľadu nepatria — len by zavadzali
+  const skupiny = sortedGroups()
+    .map((g) => ({ g, ziaci: studentsOfGroup(g.id) }))
+    .filter(({ ziaci }) => ziaci.length);
+
+  if (!skupiny.length) {
+    return el('div.empty', {},
+      el('span.empty__mark', { text: '♟' }),
+      'Zatiaľ tu nie sú žiadni žiaci. Pridajte ich v záložke Žiaci.',
+    );
+  }
+
+  // Skupinu píšeme pod meno, nie ako samostatný riadok cez celú tabuľku —
+  // taký riadok pri posúvaní doprava odscrolloval a nechával prázdne pásy.
+  const viacSkupin = skupiny.length > 1;
+
   return el('div.stack-lg', {},
-    el('div.card.tablewrap', {},
-      el('table.data', {},
+    el('div.card.card--flush.tablewrap', {},
+      el('table.data.data--compact', {},
         el('thead', {}, el('tr', {},
           el('th', { text: 'Žiak' }),
           periods.map((p) => el('th', { class: 'num', text: `${p.slice(5)}/${p.slice(2, 4)}` })),
         )),
-        el('tbody', {}, sortedGroups().flatMap((g) => [
-          el('tr', {}, el('td', { colspan: periods.length + 1, style: { fontWeight: '600', color: 'var(--ink-faint)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.07em' }, text: g.name })),
-          ...studentsOfGroup(g.id).map((s) =>
+        el('tbody', {}, skupiny.flatMap(({ g, ziaci }) =>
+          ziaci.map((s) =>
             el('tr', {},
-              el('td', { text: s.name }),
+              el('td', {},
+                el('div', { text: s.name }),
+                viacSkupin ? el('div.item__sub', { text: g.name }) : null,
+              ),
               periods.map((p) => {
                 const paid = paymentStatus(s.id, p) === 'paid';
                 const future = p > periodOf(todayISO());
                 return el('td', { class: 'num' },
                   el('span', {
                     class: `dot dot--${future ? 'none' : paid ? 'paid' : 'unpaid'}`,
-                    title: `${fmtPeriod(p)}: ${paid ? 'zaplatené' : 'nezaplatené'}`,
+                    title: `${s.name} · ${fmtPeriod(p)}: ${paid ? 'zaplatené' : 'nezaplatené'}`,
                     style: { margin: '0 auto' },
                   }),
                 );
               }),
             ),
           ),
-        ])),
+        )),
       ),
     ),
     el('div.card.row.small.muted', { style: { gap: '16px' } },

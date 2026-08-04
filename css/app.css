@@ -312,6 +312,15 @@ button.item:hover { background: var(--cream-deep); }
 /* ---------- table ---------- */
 .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+/* mriežka platieb: pri málo mesiacoch sa neroztiahne cez celú šírku,
+   aby bodka nezostala odtrhnutá od mena */
+table.data--compact { width: auto; }
+table.data--compact th.num, table.data--compact td.num { min-width: 56px; }
+table.data--compact th:first-child, table.data--compact td:first-child {
+  padding-left: 16px; padding-right: 22px;
+}
+table.data--compact th:last-child, table.data--compact td:last-child { padding-right: 16px; }
+table.data--compact tbody td { padding-top: 11px; padding-bottom: 11px; }
 table.data th, table.data td { padding: 9px 10px; text-align: left; white-space: nowrap; }
 table.data th { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint); font-weight: 600; }
 table.data tbody tr + tr { border-top: 1px solid var(--cream-line); }
