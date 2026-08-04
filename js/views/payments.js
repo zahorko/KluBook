@@ -9,12 +9,15 @@ import {
 } from '../store.js';
 import { refresh } from '../router.js';
 
-const uiState = { period: periodOf(todayISO()) };
+const uiState = { period: periodOf(todayISO()), rucneZvolene: false };
 
 /** Sumy bez zbytočných desatinných miest: 25 €, nie 25.00 €. */
 const eur = (n) => (Math.round(n * 100) / 100).toString().replace('.', ',');
 
 export function renderPayments(root) {
+  // Kým si tréner mesiac sám neprepne, ukazujeme vždy aktuálny. Po prelome
+  // mesiaca sa tak nový mesiac objaví sám aj v appke, ktorá je stále otvorená.
+  if (!uiState.rucneZvolene) uiState.period = periodOf(todayISO());
   const period = uiState.period;
   const groups = sortedGroups();
 
@@ -52,12 +55,12 @@ export function renderPayments(root) {
   body.append(
     el('div.card.card--warm.stack', {},
       el('div.row.row--between', {},
-        el('button.iconbtn', { text: '‹', onclick: () => { uiState.period = shiftPeriod(period, -1); refresh(); } }),
+        el('button.iconbtn', { text: '‹', onclick: () => { uiState.period = shiftPeriod(period, -1); uiState.rucneZvolene = true; refresh(); } }),
         el('h2', { text: fmtPeriod(period), style: { fontSize: '18px' } }),
         el('button.iconbtn', {
           text: '›',
           disabled: period >= periodOf(todayISO()),
-          onclick: () => { uiState.period = shiftPeriod(period, 1); refresh(); },
+          onclick: () => { uiState.period = shiftPeriod(period, 1); uiState.rucneZvolene = true; refresh(); },
         }),
       ),
       el('div.stats', {},
