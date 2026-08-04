@@ -99,7 +99,7 @@ function devicePinSheet() {
   sheet('PIN pre toto zariadenie', (body, close) => {
     const p1 = el('input.input', { type: 'password', inputmode: 'numeric', maxlength: '4', placeholder: '••••' });
     const p2 = el('input.input', { type: 'password', inputmode: 'numeric', maxlength: '4', placeholder: '••••' });
-    body.append(
+    mount(body,
       el('p.small.muted', { style: { margin: 0 },
         text: 'PIN platí len pre toto zariadenie a odomyká ním uložené prihlásenie. Na inom telefóne si nastavíte vlastný.' }),
       field('Nový PIN (4 číslice)', p1),
@@ -127,7 +127,7 @@ function passwordSheet() {
   sheet('Zmeniť heslo', (body, close) => {
     const p1 = el('input.input', { type: 'password', autocomplete: 'new-password', placeholder: 'aspoň 8 znakov' });
     const p2 = el('input.input', { type: 'password', autocomplete: 'new-password' });
-    body.append(
+    mount(body,
       field('Nové heslo', p1),
       field('Zopakujte heslo', p2),
       el('button.btn.btn--block', {
@@ -153,7 +153,7 @@ function demoPinSheet(trainer) {
   sheet('Zmeniť PIN', (body, close) => {
     const p1 = el('input.input', { type: 'password', inputmode: 'numeric', maxlength: '4', placeholder: '••••' });
     const p2 = el('input.input', { type: 'password', inputmode: 'numeric', maxlength: '4', placeholder: '••••' });
-    body.append(
+    mount(body,
       field('Nový PIN (4 číslice)', p1),
       field('Zopakujte PIN', p2),
       el('button.btn.btn--block', {
@@ -288,7 +288,7 @@ function popisZmeny(f) {
 
 function failedSheet() {
   sheet('Neodoslané zmeny', (body) => {
-    body.append(
+    mount(body,
       el('p.small.muted', { style: { margin: 0 },
         text: 'Tieto zmeny sa nepodarilo dostať na server. Sú uložené v tomto zariadení — '
           + 'skúste ich odoslať znova, alebo ich zadajte ručne a zoznam vyčistite.' }),
@@ -356,7 +356,7 @@ function trainersCard() {
 function cloudTrainerSheet(trainer) {
   sheet('Upraviť trénera', (body, close) => {
     const name = textInput({ value: trainer.name });
-    body.append(
+    mount(body,
       field('Meno', name),
       el('p.tiny.faint', { text: 'Prihlasovací e-mail a heslo sa menia v Supabase, nie tu.' }),
       el('button.btn.btn--block', {
@@ -393,7 +393,7 @@ function demoTrainerSheet(trainer) {
       placeholder: isNew ? '4-miestny PIN' : 'ponechať bez zmeny',
     });
 
-    body.append(
+    mount(body,
       field('Meno *', name),
       field(isNew ? 'PIN *' : 'Nový PIN (nepovinné)', pin),
       el('button.btn.btn--block', {

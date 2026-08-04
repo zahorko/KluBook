@@ -5,9 +5,10 @@ import { el, clear, mount, toast, fmtPeriod, shiftPeriod, downloadCSV, sheet, fi
 import {
   db, sortedGroups, studentsOfGroup, paymentStatus, paymentFor,
   togglePayment, setPayment, todayISO, periodOf, saveNow,
-  studentFee, paidAmount, hasOwnFee,
+  studentFee, paidAmount, hasOwnFee, currentTrainer,
 } from '../store.js';
 import { refresh } from '../router.js';
+import { contactSheet, maKontakt, textPlatba } from '../contact.js';
 
 const uiState = { period: periodOf(todayISO()), rucneZvolene: false };
 
@@ -152,7 +153,7 @@ function detailSheet(student, period, after) {
     const paidDate = el('input.input', { type: 'date', value: rec?.paidDate ?? todayISO() });
     const note = el('input.input', { type: 'text', value: rec?.note ?? '', placeholder: 'napr. zaplatené naraz za 3 mesiace' });
 
-    box.append(
+    mount(box,
       field('Stav', status),
       el('div.grid2', {}, field('Suma (€)', amount), field('Dátum úhrady', paidDate)),
       el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
@@ -160,6 +161,20 @@ function detailSheet(student, period, after) {
           ? `Predvolená suma tohto žiaka: ${eur(studentFee(student))} € (vlastná, nastavená v karte žiaka).`
           : `Predvolená suma: ${eur(studentFee(student))} € (klubová). Vlastnú sumu žiakovi nastavíte v jeho karte.` }),
       field('Poznámka', note),
+      maKontakt(student) && status.value !== 'paid'
+        ? el('button.btn.btn--soft.btn--block', {
+          text: '💬 Poslať pripomienku rodičovi',
+          onclick: () => {
+            close();
+            contactSheet(student, {
+              title: `Pripomienka platby — ${fmtPeriod(period)}`,
+              subject: `Členské ${fmtPeriod(period)}`,
+              text: textPlatba(student, fmtPeriod(period), eur(Number(amount.value) || studentFee(student)),
+                db.settings.shortName || db.settings.clubName, currentTrainer()?.name ?? ''),
+            });
+          },
+        })
+        : null,
       el('button.btn.btn--block', {
         text: 'Uložiť',
         style: { marginTop: '8px' },

@@ -9,9 +9,10 @@ import {
   db, sortedGroups, groupName, studentsOfGroup, upsertStudent, deleteStudent, studentById,
   paymentStatus, togglePayment, todayISO, periodOf, updateStudent,
   studentFee, hasOwnFee, periodsUpToNow, trackingSince,
-  absenceStreak, ABSENCE_ALERT, markContacted,
+  absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer,
 } from '../store.js';
 import { go, refresh } from '../router.js';
+import { contactSheet, telHref, maKontakt, textVymeskavanie } from '../contact.js';
 
 const uiState = { groupId: null, query: '' };
 
@@ -125,14 +126,31 @@ export function renderStudentDetail(root, studentId) {
         ),
       ),
       el('div.small.muted', { style: { marginTop: '12px' } },
-        el('div', { text: `Kontakt: ${s.contactName || '—'}${s.contactPhone ? ` · ${s.contactPhone}` : ''}` }),
-        s.contactEmail ? el('div', { text: s.contactEmail }) : null,
+        el('div', {}, `Kontakt: ${s.contactName || '—'}`,
+          s.contactPhone
+            ? el('a', { href: telHref(s.contactPhone), style: { marginLeft: '6px' } }, ` · ${s.contactPhone}`)
+            : null),
+        s.contactEmail ? el('div', {}, el('a', { href: `mailto:${s.contactEmail}` }, s.contactEmail)) : null,
         el('div', { text: `V klube od: ${fmtDate(s.startDate)}` }),
         el('div', {
           text: `Mesačný poplatok: ${studentFee(s)} €${hasOwnFee(s) ? ' (vlastný)' : ' (klubový)'}`,
         }),
         s.note ? el('div', { style: { marginTop: '6px', fontStyle: 'italic' }, text: s.note }) : null,
       ),
+      maKontakt(s)
+        ? el('div.row', { style: { gap: '10px', marginTop: '14px' } },
+          s.contactPhone
+            ? el('a.btn.btn--sm.grow', { href: telHref(s.contactPhone), style: { textDecoration: 'none' } }, '📞 Zavolať')
+            : null,
+          el('button.btn.btn--soft.btn--sm.grow', {
+            text: '💬 Napísať',
+            onclick: () => contactSheet(s, {
+              title: `Napísať — ${s.contactName || s.name}`,
+              text: textVymeskavanie(s, db.settings.shortName || db.settings.clubName, currentTrainer()?.name ?? ''),
+            }),
+          }),
+        )
+        : null,
       el('div.row', { style: { gap: '10px', marginTop: '14px' } },
         el('button.btn.btn--soft.btn--sm.grow', { text: 'Upraviť', onclick: () => studentSheet(s) }),
         el('button.btn.btn--ghost.btn--sm', {
@@ -219,7 +237,7 @@ export function studentSheet(student, defaultGroupId) {
     });
     const note = el('textarea.textarea', { placeholder: 'napr. hrá za mládežnícky tím' }, student?.note ?? '');
 
-    body.append(
+    mount(body,
       field('Meno *', name),
       field('Skupina', group),
       field('Kontaktná osoba', contactName),

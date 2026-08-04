@@ -10,9 +10,10 @@ import {
   startSession, endSession,
   addManualSession, deleteSession, studentsOfGroup, attendanceOfSession, setAttendance,
   paymentStatus, durationMinutes, todayISO, nowHM, periodOf, sessionsInRange, updateSession,
-  droppingStudents, markContacted,
+  droppingStudents, markContacted, currentTrainer,
 } from '../store.js';
 import { go, refresh } from '../router.js';
+import { contactSheet, telHref, maKontakt, textVymeskavanie } from '../contact.js';
 
 let clockTimer = null;
 export function stopClock() { clearInterval(clockTimer); clockTimer = null; }
@@ -38,6 +39,8 @@ export function renderTraining(root, trainer) {
   mount(root, box);
 }
 
+const trenerMeno = () => currentTrainer()?.name ?? '';
+
 /** Žiaci, ktorí niekoľkokrát po sebe nedorazili — kým neodídu nadobro. */
 function droppingCard(list) {
   return el('div', {},
@@ -61,10 +64,20 @@ function droppingCard(list) {
             ),
             student.contactPhone
               ? el('a.iconbtn', {
-                href: `tel:${student.contactPhone.replace(/\s/g, '')}`,
+                href: telHref(student.contactPhone),
                 title: `Zavolať: ${student.contactName || student.contactPhone}`,
                 style: { textDecoration: 'none' },
               }, '📞')
+              : null,
+            maKontakt(student)
+              ? el('button.iconbtn', {
+                text: '💬',
+                title: 'Napísať správu',
+                onclick: () => contactSheet(student, {
+                  title: `Napísať — ${student.contactName || student.name}`,
+                  text: textVymeskavanie(student, db.settings.shortName || db.settings.clubName, trenerMeno()),
+                }),
+              })
               : null,
             el('button.btn.btn--ghost.btn--sm', {
               text: 'Vybavené',
@@ -344,7 +357,7 @@ function editTimesSheet(session, navrhovanyKoniec = null) {
     const group = selectInput(sortedGroups().map((g) => ({ value: g.id, label: g.name })), { value: session.groupId });
     const trainer = selectInput(db.trainers.map((t) => ({ value: t.id, label: t.name })), { value: session.trainerId });
 
-    body.append(
+    mount(body,
       field('Dátum', date),
       el('div.grid2', {}, field('Začiatok', start), field('Koniec', end)),
       field('Skupina', group),
@@ -377,7 +390,7 @@ export function manualSheet(trainer) {
     const trainerSel = selectInput(db.trainers.map((t) => ({ value: t.id, label: t.name })), { value: trainer.id });
     const note = textInput({ placeholder: 'napr. turnajová príprava' });
 
-    body.append(
+    mount(body,
       el('p.small.muted', { style: { margin: 0 }, text: 'Pre tréning, ktorý ste zabudli zapísať. Dochádzku žiakov doplníte hneď na ďalšej obrazovke.' }),
       field('Dátum', date),
       el('div.grid2', {}, field('Začiatok', start), field('Koniec', end)),
