@@ -75,10 +75,12 @@ const MAPPERS = {
   },
   club_settings: {
     toRow: (s) => ({
-      id: 1, club_name: s.clubName, short_name: s.shortName, motto: s.motto, fee: s.fee,
+      id: 1, club_name: s.clubName, short_name: s.shortName, motto: s.motto,
+      fee: s.fee, tracking_since: s.trackingSince ?? null,
     }),
     fromRow: (r) => ({
-      clubName: r.club_name, shortName: r.short_name, motto: r.motto, fee: Number(r.fee),
+      clubName: r.club_name, shortName: r.short_name, motto: r.motto,
+      fee: Number(r.fee), trackingSince: r.tracking_since ?? null,
     }),
   },
 };

@@ -3,12 +3,12 @@
    ========================================================= */
 import {
   el, clear, mount, toast, sheet, confirmSheet, field, textInput, selectInput,
-  fmtDate, fmtDayShort, fmtPeriod, monthList,
+  fmtDate, fmtDayShort, fmtPeriod,
 } from '../ui.js';
 import {
   db, sortedGroups, groupName, studentsOfGroup, upsertStudent, deleteStudent, studentById,
   paymentStatus, togglePayment, todayISO, periodOf, updateStudent,
-  studentFee, hasOwnFee,
+  studentFee, hasOwnFee, periodsUpToNow, trackingSince,
 } from '../store.js';
 import { go, refresh } from '../router.js';
 
@@ -80,7 +80,9 @@ export function renderStudentDetail(root, studentId) {
   const s = studentById(studentId);
   if (!s) { mount(root, el('div.empty', { text: 'Žiak sa nenašiel.' })); return; }
 
-  const periods = monthList(6);
+  // od nástupu žiaka (nie skôr, než klub eviduje platby) po dnešok
+  const zaciatok = [periodOf(s.startDate), trackingSince()].sort().at(-1);
+  const periods = periodsUpToNow(zaciatok, 12);
   const sessions = db.sessions
     .filter((x) => x.groupId === s.groupId && x.date >= s.startDate)
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -152,7 +154,7 @@ export function renderStudentDetail(root, studentId) {
     ),
 
     el('div', {},
-      el('h2.section-title', { text: 'Platby (posledných 6 mesiacov)' }),
+      el('h2.section-title', { text: 'Platby' }),
       el('div.card', {},
         payBox,
         el('p.tiny.faint', { style: { marginBottom: 0 }, text: 'Ťuknutím prepnete zaplatené / nezaplatené.' }),

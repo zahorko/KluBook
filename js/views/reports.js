@@ -2,11 +2,12 @@
    Prehľady — odučené hodiny trénerov, dochádzka žiakov, platby
    ========================================================= */
 import {
-  el, clear, mount, toast, fmtHours, fmtDayShort, fmtPeriod, monthList, downloadCSV,
+  el, clear, mount, toast, fmtHours, fmtDayShort, fmtPeriod, downloadCSV,
 } from '../ui.js';
 import {
   db, sortedGroups, groupName, trainerName, studentsOfGroup, sessionsInRange,
   durationMinutes, attendanceOfSession, paymentStatus, todayISO, periodOf,
+  periodsUpToNow,
 } from '../store.js';
 import { refresh } from '../router.js';
 
@@ -206,7 +207,8 @@ function studentsReport(from, to) {
 
 /* ---------------- platby ---------------- */
 function paymentsReport() {
-  const periods = monthList(6);
+  // len mesiace, odkedy klub platby naozaj eviduje — prázdna minulosť nikoho nezaujíma
+  const periods = periodsUpToNow();
 
   return el('div.stack-lg', {},
     el('div.card.tablewrap', {},

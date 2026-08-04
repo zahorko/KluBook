@@ -63,6 +63,8 @@ const DEFAULT_SETTINGS = {
   shortName: '1. ŠK Košice',
   motto: 'Nie sme len šachový klub, sme komunita.',
   fee: PERIOD_FEE_DEFAULT,
+  // od ktorého mesiaca klub eviduje platby (prehľady nezobrazujú staršie)
+  trackingSince: null,
 };
 
 const emptyDb = () => ({
@@ -543,6 +545,35 @@ export const paymentFor = (studentId, period) =>
   db.payments.find((p) => p.studentId === studentId && p.period === period) ?? null;
 
 export const paymentStatus = (studentId, period) => paymentFor(studentId, period)?.status ?? 'unpaid';
+
+/* ---------- obdobia pre prehľady ---------- */
+
+/** Od ktorého mesiaca má zmysel zobrazovať platby.
+    Prednostne nastavenie klubu, inak najstaršia existujúca platba,
+    inak aktuálny mesiac. Nikdy nezobrazujeme prázdnu minulosť. */
+export function trackingSince() {
+  if (db.settings.trackingSince) return db.settings.trackingSince;
+  if (db.payments.length) {
+    return db.payments.reduce((min, p) => (p.period < min ? p.period : min), db.payments[0].period);
+  }
+  return periodOf(todayISO());
+}
+
+/** Zoznam mesiacov od `from` po aktuálny (vrátane), najviac `max` posledných. */
+export function periodsUpToNow(from = trackingSince(), max = 18) {
+  const teraz = periodOf(todayISO());
+  const out = [];
+  let [y, m] = from.split('-').map(Number);
+  if (!y || !m) return [teraz];
+  for (let i = 0; i < 240; i++) {
+    const p = `${y}-${String(m).padStart(2, '0')}`;
+    out.push(p);
+    if (p >= teraz) break;
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return out.slice(-max);
+}
 
 /** Očakávaný mesačný poplatok žiaka: vlastný, inak klubový. */
 export function studentFee(student) {

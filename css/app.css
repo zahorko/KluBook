@@ -316,6 +316,12 @@ table.data th, table.data td { padding: 9px 10px; text-align: left; white-space:
 table.data th { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint); font-weight: 600; }
 table.data tbody tr + tr { border-top: 1px solid var(--cream-line); }
 table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* prvý stĺpec (mená) ostáva na mieste aj pri posúvaní tabuľky doprava */
+table.data th:first-child, table.data td:first-child {
+  position: sticky; left: 0; z-index: 1;
+  background: var(--white);
+  box-shadow: 1px 0 0 var(--cream-line);
+}
 
 /* ---------- month grid (platby) ---------- */
 .paycell {

@@ -7,7 +7,7 @@ import {
   exportJSON, importJSON, resetAll, clearDemoData, todayISO,
   updateSettings, updateTrainer, applyServerData, syncNow,
   setDevicePin, hasDevicePin, devicePinEmail, lockApp,
-  studentById, groupName,
+  studentById, groupName, trackingSince,
 } from '../store.js';
 import { changePassword, session } from '../api.js';
 import { state as syncState, onSyncChange, resetSyncState, retryFailed, clearFailed } from '../sync.js';
@@ -446,6 +446,17 @@ function clubCard() {
         type: 'number', step: '0.5', value: db.settings.fee,
         onchange: (e) => { updateSettings({ fee: Number(e.target.value) || 0 }); toast('Uložené'); },
       })),
+      field('Evidencia platieb od', el('input.input', {
+        type: 'month',
+        value: db.settings.trackingSince ?? trackingSince(),
+        onchange: (e) => {
+          updateSettings({ trackingSince: e.target.value || null });
+          toast('Uložené');
+          refresh();
+        },
+      })),
+      el('p.tiny.faint', { style: { margin: '-6px 2px 0' },
+        text: 'Prehľady nezobrazujú mesiace spred tohto dátumu. Nastavte napríklad začiatok sezóny.' }),
     ),
   );
 }
