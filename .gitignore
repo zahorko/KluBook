@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logy a dočasné súbory
+*.log
+*.tmp
+
+# Závislosti a build
+node_modules/
+dist/
+
+# Editory
+.vscode/
+.idea/
+
+# Lokálne nastavenia s citlivými údajmi
+.env
+.env.local
