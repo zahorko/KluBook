@@ -1,13 +1,14 @@
 /* =========================================================
    Nastavenia — účet, synchronizácia, tréneri, klub, dáta
    ========================================================= */
-import { el, mount, toast, sheet, confirmSheet, field, textInput, downloadFile } from '../ui.js';
+import { el, mount, toast, sheet, confirmSheet, field, textInput, selectInput, downloadFile } from '../ui.js';
 import {
   db, isCloud, saveNow, logout, initialsOf, uid, newSalt, hashPin, setDemoPin,
   exportJSON, importJSON, resetAll, clearDemoData, todayISO,
   updateSettings, updateTrainer, applyServerData, syncNow,
   setDevicePin, hasDevicePin, devicePinEmail, lockApp,
   studentById, groupName, trackingSince,
+  sortedGroups, activeSchedule, upsertScheduleEntry, deleteScheduleEntry, DNI,
 } from '../store.js';
 import { changePassword, session } from '../api.js';
 import { state as syncState, onSyncChange, resetSyncState, retryFailed, clearFailed } from '../sync.js';
@@ -18,6 +19,7 @@ export function renderSettings(root, trainer) {
     accountCard(trainer),
     isCloud() ? syncCard() : null,
     trainersCard(),
+    scheduleCard(),
     clubCard(),
     dataCard(),
     el('p.tiny.faint.center', {
@@ -424,6 +426,92 @@ function demoTrainerSheet(trainer) {
       isNew ? null : el('button.btn.btn--ghost.btn--block', {
         text: trainer.active ? 'Deaktivovať účet' : 'Aktivovať účet',
         onclick: () => { trainer.active = !trainer.active; saveNow(); close(); refresh(); },
+      }),
+    );
+  });
+}
+
+/* ---------------- rozvrh ---------------- */
+function scheduleCard() {
+  const rozvrh = activeSchedule();
+  return el('div', {},
+    el('h2.section-title', { text: 'Rozvrh tréningov' }),
+    rozvrh.length === 0
+      ? el('div.empty', { style: { marginBottom: '12px' } },
+        'Zatiaľ bez rozvrhu. Keď ho vyplníte, appka vám dnešný tréning ponúkne jedným ťuknutím '
+        + 'a upozorní, keď ho zabudnete zapísať.')
+      : el('div.card.card--flush.list', {},
+        rozvrh.map((r) =>
+          el('button.item', { onclick: () => scheduleSheet(r) },
+            el('span.grow', {},
+              el('div.item__title', { text: `${DNI[r.weekday]} · ${r.startTime}–${r.endTime}` }),
+              el('div.item__sub', { text: groupName(r.groupId) }),
+            ),
+            el('span.chev', { text: '›' }),
+          ),
+        ),
+      ),
+    el('button.btn.btn--ghost.btn--block', {
+      style: { marginTop: '12px' },
+      text: '＋ Pridať do rozvrhu',
+      onclick: () => scheduleSheet(null),
+    }),
+  );
+}
+
+function scheduleSheet(zaznam) {
+  const novy = !zaznam;
+  sheet(novy ? 'Nový tréning v rozvrhu' : 'Upraviť rozvrh', (body, close) => {
+    const den = selectInput(
+      [1, 2, 3, 4, 5, 6, 0].map((i) => ({ value: String(i), label: DNI[i] })),
+      { value: String(zaznam?.weekday ?? 2) },
+    );
+    const skupina = selectInput(sortedGroups().map((g) => ({ value: g.id, label: g.name })),
+      { value: zaznam?.groupId ?? sortedGroups()[0].id });
+    const od = el('input.input', { type: 'time', value: zaznam?.startTime ?? '16:00' });
+    const doo = el('input.input', { type: 'time', value: zaznam?.endTime ?? '17:30' });
+    const trener = selectInput(
+      [{ value: '', label: '— ktokoľvek —' }, ...db.trainers.map((t) => ({ value: t.id, label: t.name }))],
+      { value: zaznam?.trainerId ?? '' },
+    );
+
+    mount(body,
+      field('Deň', den),
+      field('Skupina', skupina),
+      el('div.grid2', {}, field('Od', od), field('Do', doo)),
+      field('Zvyčajne vedie', trener),
+      el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
+        text: 'Rozvrh tréningy sám nevytvára — len ich ponúka a upozorní, keď niektorý chýba.' }),
+      el('button.btn.btn--block', {
+        text: novy ? 'Pridať' : 'Uložiť',
+        style: { marginTop: '8px' },
+        onclick: () => {
+          if (doo.value <= od.value) { toast('Koniec musí byť po začiatku'); return; }
+          upsertScheduleEntry({
+            id: zaznam?.id,
+            weekday: Number(den.value),
+            groupId: skupina.value,
+            startTime: od.value,
+            endTime: doo.value,
+            trainerId: trener.value || null,
+          });
+          close();
+          toast('Uložené');
+          refresh();
+        },
+      }),
+      novy ? null : el('button.btn.btn--danger.btn--block', {
+        text: 'Odobrať z rozvrhu',
+        onclick: async () => {
+          const ok = await confirmSheet('Odobrať z rozvrhu?',
+            'Už zapísané tréningy ostanú, zmizne len toto pravidelné okno.',
+            { danger: true, okLabel: 'Odobrať' });
+          if (!ok) return;
+          deleteScheduleEntry(zaznam.id);
+          close();
+          toast('Odobraté');
+          refresh();
+        },
       }),
     );
   });

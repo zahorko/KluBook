@@ -80,6 +80,7 @@ const emptyDb = () => ({
   sessions: [],
   attendance: [],
   payments: [],
+  schedule: [],
 });
 
 /* ---------- demo dáta ---------- */
@@ -138,6 +139,13 @@ function seedDemo() {
     }
   }
 
+  // demo rozvrh podľa toho istého plánu
+  d.schedule = plan.map((p) => ({
+    id: uid('sch'), groupId: p.groupId, weekday: p.weekday,
+    startTime: p.start, endTime: p.end, trainerId: p.trainerId,
+    active: true, skippedDates: [], createdAt: new Date().toISOString(),
+  }));
+
   const months = [];
   for (let i = 2; i >= 0; i--) {
     const m = new Date(today.getFullYear(), today.getMonth() - i, 1);
@@ -167,6 +175,7 @@ function load() {
       const parsed = JSON.parse(raw);
       if (parsed?.version) {
         parsed.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
+        parsed.schedule ??= [];
         return parsed;
       }
     } catch { /* poškodené dáta preskočíme */ }
@@ -278,6 +287,7 @@ export function applyServerData(data) {
   db.sessions = zluc('sessions', data.sessions);
   db.attendance = zluc('attendance', data.attendance);
   db.payments = zluc('payments', data.payments);
+  if (data.schedule) db.schedule = zluc('schedule', data.schedule);
   if (data.settings) db.settings = { ...DEFAULT_SETTINGS, ...data.settings };
   db.demo = false;
   saveNow();
@@ -637,6 +647,84 @@ export function markContacted(studentId, date = todayISO()) {
   s.contactedAt = date;
   queueUpsert('students', s);
   saveNow();
+}
+
+/* ---------- rozvrh tréningov ---------- */
+
+export const DNI = ['nedeľa', 'pondelok', 'utorok', 'streda', 'štvrtok', 'piatok', 'sobota'];
+
+export const activeSchedule = () =>
+  (db.schedule ?? [])
+    .filter((r) => r.active !== false)
+    .sort((a, b) => (a.weekday === b.weekday
+      ? a.startTime.localeCompare(b.startTime)
+      : ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7)));  // týždeň od pondelka
+
+/** Existuje k danému dňu a skupine už zapísaný tréning? */
+const sessionExists = (date, groupId) =>
+  db.sessions.some((s) => s.date === date && s.groupId === groupId);
+
+/** Dnešné položky rozvrhu aj s informáciou, či už sú zapísané. */
+export function todaysSchedule() {
+  const dnes = todayISO();
+  const den = new Date().getDay();
+  return activeSchedule()
+    .filter((r) => r.weekday === den)
+    .map((r) => ({ ...r, zapisany: sessionExists(dnes, r.groupId), date: dnes }));
+}
+
+/**
+ * Tréningy, ktoré podľa rozvrhu mali byť, ale nie sú zapísané.
+ * Dnešok vynechávame — ten sa ešte môže stihnúť.
+ */
+export function missingSessions(dniDozadu = 14) {
+  const out = [];
+  const dnes = new Date();
+  for (const r of activeSchedule()) {
+    for (let back = 1; back <= dniDozadu; back++) {
+      const d = new Date(dnes);
+      d.setDate(d.getDate() - back);
+      if (d.getDay() !== r.weekday) continue;
+      const date = todayISO(d);
+      if (r.createdAt && date < todayISO(new Date(r.createdAt))) continue;
+      if ((r.skippedDates ?? []).includes(date)) continue;
+      if (sessionExists(date, r.groupId)) continue;
+      out.push({ ...r, date });
+    }
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export function upsertScheduleEntry(data) {
+  const { id, ...zvysok } = data;
+  let zaznam = id ? db.schedule.find((r) => r.id === id) : null;
+  if (zaznam) {
+    Object.assign(zaznam, zvysok);
+  } else {
+    zaznam = {
+      id: id || uid('sch'), active: true, skippedDates: [],
+      createdAt: new Date().toISOString(), ...zvysok,
+    };
+    db.schedule.push(zaznam);
+  }
+  sync.up('schedule', zaznam);
+  save();
+  return zaznam;
+}
+
+export function deleteScheduleEntry(id) {
+  db.schedule = db.schedule.filter((r) => r.id !== id);
+  sync.del('schedule', id);
+  save();
+}
+
+/** Zapamätá si, že v ten deň tréning výnimočne nebol (prázdniny, sviatok). */
+export function markScheduleSkipped(scheduleId, date) {
+  const r = db.schedule.find((x) => x.id === scheduleId);
+  if (!r) return;
+  r.skippedDates = [...new Set([...(r.skippedDates ?? []), date])];
+  sync.up('schedule', r);
+  save();
 }
 
 /* ---------- obdobia pre prehľady ---------- */

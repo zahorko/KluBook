@@ -77,6 +77,21 @@ const MAPPERS = {
       paidDate: r.paid_date, amount: r.amount === null ? null : Number(r.amount), note: r.note || '',
     }),
   },
+  schedule: {
+    toRow: (r) => ({
+      id: r.id, group_id: r.groupId, weekday: r.weekday,
+      start_time: r.startTime, end_time: r.endTime,
+      trainer_id: r.trainerId || null, active: r.active !== false,
+      skipped_dates: r.skippedDates ?? [],
+    }),
+    fromRow: (r) => ({
+      id: r.id, groupId: r.group_id, weekday: Number(r.weekday),
+      startTime: (r.start_time || '').slice(0, 5),
+      endTime: (r.end_time || '').slice(0, 5),
+      trainerId: r.trainer_id ?? null, active: r.active !== false,
+      skippedDates: r.skipped_dates ?? [], createdAt: r.created_at,
+    }),
+  },
   club_settings: {
     toRow: (s) => ({
       id: 1, club_name: s.clubName, short_name: s.shortName, motto: s.motto,
@@ -90,7 +105,7 @@ const MAPPERS = {
 };
 
 /* Poradie zápisu rešpektuje väzby (tréning musí existovať pred dochádzkou). */
-const PUSH_ORDER = ['club_settings', 'trainers', 'groups', 'students', 'sessions', 'attendance', 'payments'];
+const PUSH_ORDER = ['club_settings', 'trainers', 'groups', 'schedule', 'students', 'sessions', 'attendance', 'payments'];
 
 /* Tabuľky, kde záznam poznáme aj podľa inej dvojice stĺpcov než id —
    keby dvaja tréneri zapísali to isté z dvoch zariadení. */
@@ -356,7 +371,7 @@ export async function pull() {
   state.status = 'syncing';
   emit();
   try {
-    const [trainers, groups, students, sessions, attendance, payments, settings] = await Promise.all([
+    const [trainers, groups, students, sessions, attendance, payments, settings, schedule] = await Promise.all([
       selectAll('trainers'),
       selectAll('groups'),
       selectAll('students'),
@@ -364,6 +379,11 @@ export async function pull() {
       selectAll('attendance'),
       selectAll('payments'),
       selectAll('club_settings'),
+      // rozvrh je novšia tabuľka — ak ešte nie je založená, appka beží ďalej bez neho
+      selectAll('schedule').catch(() => {
+        state.lastError = 'Rozvrh zatiaľ nie je v databáze — spustite sql/07-rozvrh.sql.';
+        return [];
+      }),
     ]);
 
     const map = (table, rows) => (rows ?? []).map(MAPPERS[table].fromRow);
@@ -374,6 +394,7 @@ export async function pull() {
       sessions: map('sessions', sessions),
       attendance: map('attendance', attendance),
       payments: map('payments', payments),
+      schedule: map('schedule', schedule),
       settings: settings?.[0] ? MAPPERS.club_settings.fromRow(settings[0]) : null,
     };
 

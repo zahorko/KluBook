@@ -11,6 +11,7 @@ import {
   addManualSession, deleteSession, studentsOfGroup, attendanceOfSession, setAttendance,
   paymentStatus, durationMinutes, todayISO, nowHM, periodOf, sessionsInRange, updateSession,
   droppingStudents, markContacted, currentTrainer,
+  todaysSchedule, missingSessions, markScheduleSkipped, DNI,
 } from '../store.js';
 import { go, refresh } from '../router.js';
 import { contactSheet, telHref, maKontakt, textVymeskavanie } from '../contact.js';
@@ -29,6 +30,10 @@ export function renderTraining(root, trainer) {
   const zabudnute = unfinishedSessions();
   if (zabudnute.length) box.append(unfinishedCard(zabudnute));
 
+  // nezapísané tréningy z rozvrhu — appka si ich všimne za vás
+  const chybajuce = missingSessions();
+  if (chybajuce.length) box.append(missingCard(chybajuce, trainer));
+
   if (live) box.append(liveCard(live, trainer));
   else box.append(startCard(trainer));
 
@@ -40,6 +45,75 @@ export function renderTraining(root, trainer) {
 }
 
 const trenerMeno = () => currentTrainer()?.name ?? '';
+
+/** Dnešné tréningy podľa rozvrhu — začnú sa jedným ťuknutím. */
+function todayCard(trainer) {
+  const dnes = todaysSchedule();
+  if (!dnes.length) return null;
+
+  return el('div', {},
+    el('h2.section-title', { text: 'Dnes podľa rozvrhu' }),
+    el('div.stack', {},
+      dnes.map((r) =>
+        el('div.card.row', { style: { gap: '10px' } },
+          el('span.grow', {},
+            el('div', { style: { fontWeight: '500' }, text: groupName(r.groupId) }),
+            el('div.item__sub', { text: `${r.startTime}–${r.endTime}` }),
+          ),
+          r.zapisany
+            ? el('span.tag.tag--paid', { text: '✓ zapísaný' })
+            : el('button.btn.btn--sm', {
+              text: 'Začať',
+              onclick: () => {
+                const s = startSession({
+                  trainerId: r.trainerId || trainer.id,
+                  groupId: r.groupId,
+                  startTime: r.startTime,
+                });
+                toast(`Tréning „${groupName(r.groupId)}" začal`);
+                go(`/trening/${s.id}`);
+              },
+            }),
+        ),
+      ),
+    ),
+  );
+}
+
+/** Tréningy, ktoré podľa rozvrhu mali byť, ale nikto ich nezapísal. */
+function missingCard(zoznam, trainer) {
+  return el('div.card', { style: { background: 'var(--cream-deep)', borderColor: 'transparent' } },
+    el('div', { style: { fontWeight: '600', marginBottom: '4px' },
+      text: zoznam.length === 1 ? 'Nezapísaný tréning' : `${zoznam.length} nezapísaných tréningov` }),
+    el('p.small.muted', { style: { margin: '0 0 12px' },
+      text: 'Podľa rozvrhu mali byť, ale nie sú v evidencii. Doplňte ich alebo označte, že neboli.' }),
+    el('div.stack', {},
+      zoznam.slice(0, 6).map((r) =>
+        el('div.row', { style: { gap: '8px' } },
+          el('span.grow.small', {},
+            el('strong', { text: fmtDayShort(r.date) }),
+            ` · ${groupName(r.groupId)} · ${r.startTime}–${r.endTime}`,
+          ),
+          el('button.btn.btn--sm', {
+            text: 'Zapísať',
+            onclick: () => manualSheet(trainer, {
+              date: r.date, groupId: r.groupId, startTime: r.startTime, endTime: r.endTime,
+              trainerId: r.trainerId || trainer.id,
+            }),
+          }),
+          el('button.btn.btn--ghost.btn--sm', {
+            text: 'Nebol',
+            onclick: () => {
+              markScheduleSkipped(r.id, r.date);
+              toast('Označené — tréning v ten deň nebol');
+              refresh();
+            },
+          }),
+        ),
+      ),
+    ),
+  );
+}
 
 /** Žiaci, ktorí niekoľkokrát po sebe nedorazili — kým neodídu nadobro. */
 function droppingCard(list) {
@@ -216,8 +290,11 @@ function navrhKoniec(startTime) {
 }
 
 function startCard(trainer) {
-  return el('div.stack', {},
-    el('h2.section-title', { text: 'Začať tréning' }),
+  const dnes = todayCard(trainer);
+  return el('div.stack-lg', {},
+    dnes,
+    el('div.stack', {},
+    el('h2.section-title', { text: dnes ? 'Alebo iná skupina' : 'Začať tréning' }),
     el('div.stack', {},
       sortedGroups().map((g) => {
         const count = studentsOfGroup(g.id).length;
@@ -240,6 +317,7 @@ function startCard(trainer) {
       text: '＋ Ručný záznam (spätne)',
       onclick: () => manualSheet(trainer),
     }),
+    ),
   );
 }
 
@@ -454,13 +532,13 @@ function editTimesSheet(session, navrhovanyKoniec = null) {
   });
 }
 
-export function manualSheet(trainer) {
+export function manualSheet(trainer, predvolene = {}) {
   sheet('Ručný záznam tréningu', (body, close) => {
-    const date = el('input.input', { type: 'date', value: todayISO() });
-    const start = el('input.input', { type: 'time', value: '16:00' });
-    const end = el('input.input', { type: 'time', value: '17:30' });
-    const group = selectInput(sortedGroups().map((g) => ({ value: g.id, label: g.name })));
-    const trainerSel = selectInput(db.trainers.map((t) => ({ value: t.id, label: t.name })), { value: trainer.id });
+    const date = el('input.input', { type: 'date', value: predvolene.date ?? todayISO() });
+    const start = el('input.input', { type: 'time', value: predvolene.startTime ?? '16:00' });
+    const end = el('input.input', { type: 'time', value: predvolene.endTime ?? '17:30' });
+    const group = selectInput(sortedGroups().map((g) => ({ value: g.id, label: g.name })), { value: predvolene.groupId });
+    const trainerSel = selectInput(db.trainers.map((t) => ({ value: t.id, label: t.name })), { value: predvolene.trainerId ?? trainer.id });
     const tema = poleTema();
 
     mount(body,
