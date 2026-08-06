@@ -217,6 +217,7 @@ export function renderStudentDetail(root, studentId) {
                 el('div.item__sub', {
                   text: `${x.startTime}–${x.endTime ?? '…'}${x.endTime ? ` · ${fmtHours(durationMinutes(x))}` : ''}`,
                 }),
+                x.note ? el('div.item__sub', { style: { color: 'var(--ink-soft)' }, text: `📘 ${x.note}` }) : null,
               ),
               el('span', { class: `tag tag--${present ? 'paid' : 'unpaid'}`, text: present ? 'bol' : 'chýbal' }),
             );

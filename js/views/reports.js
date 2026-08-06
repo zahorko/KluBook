@@ -104,13 +104,14 @@ function trainersReport(from, to) {
         : el('div.card.tablewrap', {},
           el('table.data', {},
             el('thead', {}, el('tr', {},
-              ['Dátum', 'Skupina', 'Tréner', 'Od–Do', 'Trvanie', 'Účasť'].map((h) => el('th', { text: h })),
+              ['Dátum', 'Skupina', 'Téma', 'Tréner', 'Od–Do', 'Trvanie', 'Účasť'].map((h) => el('th', { text: h })),
             )),
             el('tbody', {}, sessions.slice(0, 60).map((s) => {
               const att = attendanceOfSession(s.id);
               return el('tr', {},
                 el('td', { text: fmtDayShort(s.date) }),
                 el('td', { text: groupName(s.groupId) }),
+                el('td', { style: { whiteSpace: 'normal', minWidth: '160px' }, text: s.note || '—' }),
                 el('td', { text: trainerName(s.trainerId) }),
                 el('td', { class: 'mono', text: `${s.startTime}–${s.endTime}` }),
                 el('td', { class: 'mono', text: fmtHours(durationMinutes(s)) }),
@@ -124,10 +125,10 @@ function trainersReport(from, to) {
     el('button.btn.btn--ghost.btn--block', {
       text: '⤓ Export tréningov do CSV',
       onclick: () => {
-        const rows = [['Dátum', 'Skupina', 'Tréner', 'Začiatok', 'Koniec', 'Minúty', 'Prítomní', 'Zapísaní']];
+        const rows = [['Dátum', 'Skupina', 'Téma', 'Tréner', 'Začiatok', 'Koniec', 'Minúty', 'Prítomní', 'Zapísaní']];
         for (const s of sessions) {
           const att = attendanceOfSession(s.id);
-          rows.push([s.date, groupName(s.groupId), trainerName(s.trainerId), s.startTime, s.endTime,
+          rows.push([s.date, groupName(s.groupId), s.note || '', trainerName(s.trainerId), s.startTime, s.endTime,
             durationMinutes(s), att.filter((a) => a.present).length, att.length]);
         }
         downloadCSV(`treningy-${from}_${to}.csv`, rows);

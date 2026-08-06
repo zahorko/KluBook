@@ -128,6 +128,86 @@ function unfinishedCard(sessions) {
   );
 }
 
+/* ---------------- téma tréningu ---------------- */
+
+/** Naposledy použité témy — nech ich tréner nemusí prepisovať dokola. */
+function posledneTemy(limit = 8) {
+  const videne = new Set();
+  return db.sessions
+    .filter((s) => s.note?.trim())
+    .sort((a, b) => `${b.date}${b.startTime}`.localeCompare(`${a.date}${a.startTime}`))
+    .map((s) => s.note.trim())
+    .filter((t) => (videne.has(t.toLowerCase()) ? false : videne.add(t.toLowerCase())))
+    .slice(0, limit);
+}
+
+/** Pole na tému aj so zoznamom naposledy použitých. */
+function poleTema(hodnota = '') {
+  const id = `temy_${Math.random().toString(36).slice(2, 8)}`;
+  const input = el('input.input', {
+    type: 'text',
+    value: hodnota,
+    list: id,
+    placeholder: 'napr. koncovky — kráľ a pešiak, taktika: vidlička',
+  });
+  const zoznam = el('datalist', { id }, posledneTemy().map((t) => el('option', { value: t })));
+  return { input, node: el('div', {}, input, zoznam) };
+}
+
+/** Ukončenie tréningu — rovno sa pýtame, čo sa preberalo. */
+function endSessionSheet(session, hotovo) {
+  sheet('Ukončiť tréning', (body, close) => {
+    const tema = poleTema(session.note ?? '');
+    const cas = el('input.input', { type: 'time', value: nowHM() });
+
+    mount(body,
+      el('p.small.muted', { style: { margin: 0 },
+        text: 'Dochádzku žiakov aj tému môžete upraviť aj neskôr.' }),
+      field('Čas ukončenia', cas),
+      field('Téma tréningu (nepovinné)', tema.node),
+      el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
+        text: 'O mesiac sa vám bude hodiť vedieť, čo ste s touto skupinou preberali.' }),
+      el('div.row', { style: { gap: '10px', marginTop: '14px' } },
+        el('button.btn.btn--ghost.grow', { text: 'Zrušiť', onclick: close }),
+        el('button.btn.grow', {
+          text: 'Ukončiť tréning',
+          onclick: () => {
+            session.note = tema.input.value.trim();
+            const s = endSession(session.id, cas.value || nowHM());
+            close();
+            stopClock();
+            toast(`Tréning ukončený · ${fmtHours(durationMinutes(s))}`);
+            hotovo?.();
+          },
+        }),
+      ),
+    );
+  });
+}
+
+/** Samostatná úprava témy — dá sa doplniť aj spätne. */
+function temaSheet(session) {
+  sheet('Téma tréningu', (body, close) => {
+    const tema = poleTema(session.note ?? '');
+    mount(body,
+      el('p.small.muted', { style: { margin: 0 },
+        text: `${groupName(session.groupId)} · ${fmtDayShort(session.date)}` }),
+      field('Čo ste preberali', tema.node),
+      el('button.btn.btn--block', {
+        text: 'Uložiť',
+        style: { marginTop: '8px' },
+        onclick: () => {
+          session.note = tema.input.value.trim();
+          updateSession(session);
+          close();
+          toast('Uložené');
+          refresh();
+        },
+      }),
+    );
+  });
+}
+
 /** Rozumný odhad konca tréningu — hodina a pol po začiatku. */
 function navrhKoniec(startTime) {
   const [h, m] = startTime.split(':').map(Number);
@@ -193,16 +273,7 @@ function liveCard(session, trainer) {
       el('div.row', { style: { gap: '10px', marginTop: '16px' } },
         el('button.btn.btn--white.grow', {
           text: 'Ukončiť tréning',
-          onclick: async () => {
-            const ok = await confirmSheet('Ukončiť tréning?',
-              `Zapíše sa čas ukončenia ${nowHM()}. Dochádzku žiakov môžete upraviť aj neskôr.`,
-              { okLabel: 'Ukončiť' });
-            if (!ok) return;
-            const s = endSession(session.id);
-            stopClock();
-            toast(`Tréning ukončený · ${fmtHours(durationMinutes(s))}`);
-            refresh();
-          },
+          onclick: () => endSessionSheet(session, refresh),
         }),
         el('button.btn.btn--ghost', {
           text: 'Dochádzka',
@@ -234,6 +305,7 @@ function recentSessions(trainer) {
             el('span.grow', {},
               el('div.item__title', { text: groupName(s.groupId) }),
               el('div.item__sub', { text: `${fmtDayShort(s.date)} · ${s.startTime}–${s.endTime} · ${trainerName(s.trainerId)}` }),
+              s.note ? el('div.item__sub', { style: { color: 'var(--ink-soft)' }, text: `📘 ${s.note}` }) : null,
             ),
             el('span.tag', { text: `${present}/${att.length}` }),
             el('span.chev', { text: '›' }),
@@ -305,6 +377,10 @@ export function renderSession(root, trainer, sessionId) {
           el('div.tiny.faint', {
             text: `${session.startTime}–${session.endTime ?? '…'} · ${trainerName(session.trainerId)}`,
           }),
+          el('button', {
+            style: { background: 'none', border: 0, padding: '6px 0 0', cursor: 'pointer', textAlign: 'left', color: session.note ? 'var(--ink)' : 'var(--terracotta-d)' },
+            onclick: () => temaSheet(session),
+          }, session.note ? `📘 ${session.note}` : '＋ Doplniť tému tréningu'),
         ),
         session.endTime ? null : el('span.tag.tag--live', { text: '● PREBIEHA' }),
       ),
@@ -316,13 +392,7 @@ export function renderSession(root, trainer, sessionId) {
       ),
       session.endTime ? null : el('button.btn.btn--block', {
         text: 'Ukončiť tréning',
-        onclick: async () => {
-          const ok = await confirmSheet('Ukončiť tréning?', `Zapíše sa čas ukončenia ${nowHM()}.`, { okLabel: 'Ukončiť' });
-          if (!ok) return;
-          endSession(session.id);
-          toast('Tréning ukončený');
-          go('/trening');
-        },
+        onclick: () => endSessionSheet(session, () => go('/trening')),
       }),
     ),
 
@@ -356,12 +426,14 @@ function editTimesSheet(session, navrhovanyKoniec = null) {
     const end = el('input.input', { type: 'time', value: session.endTime ?? navrhovanyKoniec ?? '' });
     const group = selectInput(sortedGroups().map((g) => ({ value: g.id, label: g.name })), { value: session.groupId });
     const trainer = selectInput(db.trainers.map((t) => ({ value: t.id, label: t.name })), { value: session.trainerId });
+    const tema = poleTema(session.note ?? '');
 
     mount(body,
       field('Dátum', date),
       el('div.grid2', {}, field('Začiatok', start), field('Koniec', end)),
       field('Skupina', group),
       field('Tréner', trainer),
+      field('Téma tréningu', tema.node),
       el('button.btn.btn--block', {
         text: 'Uložiť',
         style: { marginTop: '8px' },
@@ -371,6 +443,7 @@ function editTimesSheet(session, navrhovanyKoniec = null) {
           session.endTime = end.value || null;
           session.groupId = group.value;
           session.trainerId = trainer.value;
+          session.note = tema.input.value.trim();
           updateSession(session);
           close();
           toast('Uložené');
@@ -388,7 +461,7 @@ export function manualSheet(trainer) {
     const end = el('input.input', { type: 'time', value: '17:30' });
     const group = selectInput(sortedGroups().map((g) => ({ value: g.id, label: g.name })));
     const trainerSel = selectInput(db.trainers.map((t) => ({ value: t.id, label: t.name })), { value: trainer.id });
-    const note = textInput({ placeholder: 'napr. turnajová príprava' });
+    const tema = poleTema();
 
     mount(body,
       el('p.small.muted', { style: { margin: 0 }, text: 'Pre tréning, ktorý ste zabudli zapísať. Dochádzku žiakov doplníte hneď na ďalšej obrazovke.' }),
@@ -396,7 +469,7 @@ export function manualSheet(trainer) {
       el('div.grid2', {}, field('Začiatok', start), field('Koniec', end)),
       field('Skupina', group),
       field('Tréner', trainerSel),
-      field('Poznámka (nepovinné)', note),
+      field('Téma tréningu (nepovinné)', tema.node),
       el('button.btn.btn--block', {
         text: 'Zapísať tréning',
         style: { marginTop: '8px' },
@@ -409,7 +482,7 @@ export function manualSheet(trainer) {
             date: date.value,
             startTime: start.value,
             endTime: end.value,
-            note: note.value.trim(),
+            note: tema.input.value.trim(),
           });
           close();
           toast('Tréning zapísaný');
