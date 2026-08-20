@@ -9,6 +9,7 @@ import {
   setDevicePin, hasDevicePin, devicePinEmail, lockApp,
   studentById, groupName, trackingSince,
   sortedGroups, activeSchedule, upsertScheduleEntry, deleteScheduleEntry, DNI,
+  scoringRules, updateScoring, recomputeAllPoints, DRUHY_PODUJATI,
 } from '../store.js';
 import { changePassword, session } from '../api.js';
 import { state as syncState, onSyncChange, resetSyncState, retryFailed, clearFailed } from '../sync.js';
@@ -20,6 +21,7 @@ export function renderSettings(root, trainer) {
     isCloud() ? syncCard() : null,
     trainersCard(),
     scheduleCard(),
+    scoringCard(),
     clubCard(),
     dataCard(),
     el('p.tiny.faint.center', {
@@ -515,6 +517,53 @@ function scheduleSheet(zaznam) {
       }),
     );
   });
+}
+
+/* ---------------- bodovanie ---------------- */
+function scoringCard() {
+  const pravidla = scoringRules();
+
+  const cislo = (kind, kluc, popis) => field(popis, el('input.input', {
+    type: 'number', step: '0.5', value: pravidla[kind][kluc],
+    onchange: (e) => {
+      updateScoring(kind, { [kluc]: Number(e.target.value) || 0 });
+      const zmenene = recomputeAllPoints();
+      toast(zmenene ? `Uložené · prepočítaných ${zmenene} výsledkov` : 'Uložené');
+    },
+  }));
+
+  const umiestnenie = (miesto) => field(`${miesto}. miesto`, el('input.input', {
+    type: 'number', step: '1', value: pravidla.turnaj.umiestnenie?.[miesto] ?? 0,
+    onchange: (e) => {
+      const tab = { ...(scoringRules().turnaj.umiestnenie ?? {}), [miesto]: Number(e.target.value) || 0 };
+      updateScoring('turnaj', { umiestnenie: tab });
+      const zmenene = recomputeAllPoints();
+      toast(zmenene ? `Uložené · prepočítaných ${zmenene} výsledkov` : 'Uložené');
+    },
+  }));
+
+  return el('div', {},
+    el('h2.section-title', { text: 'Bodovanie za hranie' }),
+    el('div.card.stack', {},
+      el('p.small.muted', { style: { margin: 0 },
+        text: 'Koľko bodov dostane hráč za podujatie. Po zmene sa všetky doterajšie výsledky prepočítajú.' }),
+
+      el('div', {},
+        el('div.field__label', { text: `${DRUHY_PODUJATI.liga} — jedna partia` }),
+        el('div.grid2', {}, cislo('liga', 'ucast', 'Za účasť'), cislo('liga', 'vyhra', 'Výhra')),
+        el('div.grid2', {}, cislo('liga', 'remiza', 'Remíza'), cislo('liga', 'prehra', 'Prehra')),
+      ),
+
+      el('div', {},
+        el('div.field__label', { text: `${DRUHY_PODUJATI.turnaj} — viac partií za deň` }),
+        el('div.grid2', {}, cislo('turnaj', 'ucast', 'Za účasť'), cislo('turnaj', 'vyhra', 'Za výhru')),
+        el('div.grid2', {}, cislo('turnaj', 'remiza', 'Za remízu'), cislo('turnaj', 'prehra', 'Za prehru')),
+        el('div.field__label', { text: 'Bonus za umiestnenie', style: { marginTop: '10px' } }),
+        el('div.grid2', {}, umiestnenie(1), umiestnenie(2)),
+        el('div.grid2', {}, umiestnenie(3), umiestnenie(4)),
+      ),
+    ),
+  );
 }
 
 /* ---------------- klub ---------------- */

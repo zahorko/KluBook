@@ -81,6 +81,8 @@ const emptyDb = () => ({
   attendance: [],
   payments: [],
   schedule: [],
+  events: [],
+  eventResults: [],
 });
 
 /* ---------- demo dáta ---------- */
@@ -176,6 +178,8 @@ function load() {
       if (parsed?.version) {
         parsed.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
         parsed.schedule ??= [];
+        parsed.events ??= [];
+        parsed.eventResults ??= [];
         return parsed;
       }
     } catch { /* poškodené dáta preskočíme */ }
@@ -288,6 +292,8 @@ export function applyServerData(data) {
   db.attendance = zluc('attendance', data.attendance);
   db.payments = zluc('payments', data.payments);
   if (data.schedule) db.schedule = zluc('schedule', data.schedule);
+  if (data.events) db.events = zluc('events', data.events);
+  if (data.eventResults) db.eventResults = zluc('event_results', data.eventResults);
   if (data.settings) db.settings = { ...DEFAULT_SETTINGS, ...data.settings };
   db.demo = false;
   saveNow();
@@ -413,13 +419,24 @@ export const isInGroup = (student, groupId) => studentGroupIds(student).includes
 
 export function studentsOfGroup(groupId, { includeInactive = false } = {}) {
   return db.students
-    .filter((s) => isInGroup(s, groupId) && (includeInactive || s.active))
+    .filter((s) => trainsWithClub(s) && isInGroup(s, groupId) && (includeInactive || s.active))
     .sort((a, b) => a.name.localeCompare(b.name, 'sk'));
 }
 
 /** Každý žiak práve raz — pre platby, kde je žiak jeden bez ohľadu na počet skupín. */
+/** Všetci ľudia klubu vrátane tých, čo nechodia na tréningy (pre bodovanie). */
+export function everyone({ includeInactive = false } = {}) {
+  return db.students
+    .filter((s) => includeInactive || s.active)
+    .sort((a, b) => a.name.localeCompare(b.name, 'sk'));
+}
+
+export const trainsWithClub = (student) => student?.trains !== false;
+
+/** Žiaci, ktorí chodia na tréningy — pre platby a dochádzku. */
 export function allStudents({ includeInactive = false } = {}) {
   return db.students
+    .filter((s) => trainsWithClub(s))
     .filter((s) => includeInactive || s.active)
     .sort((a, b) => {
       const ga = groupById(primaryGroupId(a))?.order ?? 99;
@@ -647,6 +664,167 @@ export function markContacted(studentId, date = todayISO()) {
   s.contactedAt = date;
   queueUpsert('students', s);
   saveNow();
+}
+
+/* ---------- klubové bodovanie za hranie ---------- */
+
+/* Východiskové pravidlá. Dajú sa zmeniť v Nastaveniach, takže ich netreba
+   trafiť napevno — po prvej sezóne sa doladia podľa skutočnosti. */
+export const DEFAULT_SCORING = {
+  liga:   { ucast: 3, vyhra: 3, remiza: 2, prehra: 1, umiestnenie: {} },
+  turnaj: { ucast: 5, vyhra: 3, remiza: 2, prehra: 1, umiestnenie: { 1: 10, 2: 7, 3: 5, 4: 3, 5: 3, 6: 3 } },
+  ine:    { ucast: 3, vyhra: 3, remiza: 2, prehra: 1, umiestnenie: {} },
+};
+
+export const DRUHY_PODUJATI = {
+  liga: 'Ligové kolo',
+  turnaj: 'Turnaj',
+  ine: 'Iné podujatie',
+};
+
+export function scoringRules() {
+  const ulozene = db.settings.scoring ?? {};
+  const out = {};
+  for (const [kind, zaklad] of Object.entries(DEFAULT_SCORING)) {
+    out[kind] = { ...zaklad, ...(ulozene[kind] ?? {}) };
+    out[kind].umiestnenie = { ...zaklad.umiestnenie, ...(ulozene[kind]?.umiestnenie ?? {}) };
+  }
+  return out;
+}
+
+export function updateScoring(kind, patch) {
+  const teraz = scoringRules();
+  const nove = { ...teraz, [kind]: { ...teraz[kind], ...patch } };
+  updateSettings({ scoring: nove });
+}
+
+/** Body za jeden výsledok — účasť + partie + umiestnenie + ručný bonus. */
+export function computePoints(event, result) {
+  const r = scoringRules()[event?.kind] ?? DEFAULT_SCORING.turnaj;
+  const partie = (Number(result.wins) || 0) * r.vyhra
+    + (Number(result.draws) || 0) * r.remiza
+    + (Number(result.losses) || 0) * r.prehra;
+  const umiestnenie = result.placement ? Number(r.umiestnenie?.[result.placement] ?? 0) : 0;
+  const suma = r.ucast + partie + umiestnenie + (Number(result.bonus) || 0);
+  return Math.round(suma * 100) / 100;
+}
+
+/* ---- sezóna ---- */
+/** Šachový rok: 1. september až 31. august, ak si tréner neurčí inak. */
+export function seasonRange() {
+  const { seasonStart, seasonEnd } = db.settings;
+  if (seasonStart && seasonEnd) return { from: seasonStart, to: seasonEnd };
+  const d = new Date();
+  const rok = d.getMonth() >= 8 ? d.getFullYear() : d.getFullYear() - 1;
+  return { from: `${rok}-09-01`, to: `${rok + 1}-08-31` };
+}
+
+/* ---- dopyty ---- */
+export const eventById = (id) => db.events.find((e) => e.id === id);
+export const resultsOfEvent = (eventId) => db.eventResults.filter((r) => r.eventId === eventId);
+export const resultsOfStudent = (studentId) => db.eventResults.filter((r) => r.studentId === studentId);
+
+export function eventsInRange(from, to) {
+  return db.events
+    .filter((e) => e.date >= from && e.date <= to)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * Rebríček za obdobie. Súčet všetkých bodov — kto hrá viac, má viac.
+ * `groupId` je len filter zobrazenia, body sa počítajú vždy rovnako.
+ */
+export function leaderboard({ from, to, groupId = null } = {}) {
+  const obdobie = from && to ? { from, to } : seasonRange();
+  const podujatia = new Map(eventsInRange(obdobie.from, obdobie.to).map((e) => [e.id, e]));
+
+  const podlaZiaka = new Map();
+  for (const r of db.eventResults) {
+    if (!podujatia.has(r.eventId)) continue;
+    const zaznam = podlaZiaka.get(r.studentId) ?? {
+      studentId: r.studentId, points: 0, events: 0, wins: 0, draws: 0, losses: 0, games: 0,
+    };
+    zaznam.points += Number(r.points) || 0;
+    zaznam.events += 1;
+    zaznam.wins += r.wins || 0;
+    zaznam.draws += r.draws || 0;
+    zaznam.losses += r.losses || 0;
+    zaznam.games += (r.wins || 0) + (r.draws || 0) + (r.losses || 0);
+    podlaZiaka.set(r.studentId, zaznam);
+  }
+
+  return [...podlaZiaka.values()]
+    .map((z) => ({ ...z, student: studentById(z.studentId) }))
+    .filter((z) => z.student)
+    .filter((z) => (groupId ? isInGroup(z.student, groupId) : true))
+    .sort((a, b) => b.points - a.points
+      || b.events - a.events
+      || a.student.name.localeCompare(b.student.name, 'sk'));
+}
+
+/* ---- zmeny ---- */
+export function upsertEvent(data) {
+  const { id, ...zvysok } = data;
+  let e = id ? db.events.find((x) => x.id === id) : null;
+  if (e) {
+    Object.assign(e, zvysok);
+  } else {
+    e = { id: id || uid('evt'), createdAt: new Date().toISOString(), ...zvysok };
+    db.events.push(e);
+  }
+  sync.up('events', e);
+  save();
+  return e;
+}
+
+export function deleteEvent(eventId) {
+  const ids = resultsOfEvent(eventId).map((r) => r.id);
+  db.eventResults = db.eventResults.filter((r) => r.eventId !== eventId);
+  db.events = db.events.filter((e) => e.id !== eventId);
+  sync.delMany('event_results', ids);
+  sync.del('events', eventId);
+  save();
+}
+
+/** Zapíše výsledok jedného hráča na podujatí a rovno prepočíta body. */
+export function setEventResult(eventId, studentId, data = {}) {
+  const event = eventById(eventId);
+  let r = db.eventResults.find((x) => x.eventId === eventId && x.studentId === studentId);
+  if (!r) {
+    r = {
+      id: uid('res'), eventId, studentId,
+      wins: 0, draws: 0, losses: 0, placement: null, bonus: 0, points: 0, note: '',
+    };
+    db.eventResults.push(r);
+  }
+  Object.assign(r, data);
+  r.points = computePoints(event, r);
+  sync.up('event_results', r);
+  save();
+  return r;
+}
+
+export function removeEventResult(eventId, studentId) {
+  const r = db.eventResults.find((x) => x.eventId === eventId && x.studentId === studentId);
+  if (!r) return;
+  db.eventResults = db.eventResults.filter((x) => x.id !== r.id);
+  sync.del('event_results', r.id);
+  save();
+}
+
+/** Prepočíta body všetkých výsledkov — po zmene pravidiel bodovania. */
+export function recomputeAllPoints() {
+  let zmenene = 0;
+  for (const r of db.eventResults) {
+    const nove = computePoints(eventById(r.eventId), r);
+    if (nove !== r.points) {
+      r.points = nove;
+      sync.up('event_results', r);
+      zmenene++;
+    }
+  }
+  if (zmenene) saveNow();
+  return zmenene;
 }
 
 /* ---------- rozvrh tréningov ---------- */

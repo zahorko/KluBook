@@ -14,6 +14,7 @@ import { renderStudents, renderStudentDetail } from './views/students.js';
 import { renderPayments } from './views/payments.js';
 import { renderReports } from './views/reports.js';
 import { renderSettings } from './views/settings.js';
+import { renderEvent } from './views/points.js';
 
 const TABS = [
   { path: 'trening', label: 'Tréning', icon: '♟' },
@@ -29,6 +30,7 @@ const TITLES = {
   platby: 'Platby',
   prehlady: 'Prehľady',
   nastavenia: 'Nastavenia',
+  podujatie: 'Podujatie',
 };
 
 const app = document.getElementById('app');
@@ -70,6 +72,9 @@ function render() {
       break;
     case 'nastavenia':
       renderSettings(content, trainer);
+      break;
+    case 'podujatie':
+      renderEvent(content, param);
       break;
   }
 
@@ -151,7 +156,7 @@ function navbar(active) {
   return el('nav.nav', {},
     TABS.map((t) =>
       el('button.nav__item', {
-        'aria-current': t.path === active ? 'page' : null,
+        'aria-current': t.path === active || (active === 'podujatie' && t.path === 'prehlady') ? 'page' : null,
         onclick: () => go(`/${t.path}`),
       },
         el('span.nav__icon', { text: t.icon }),

@@ -39,6 +39,7 @@ const MAPPERS = {
       start_date: s.startDate, active: s.active !== false,
       monthly_fee: s.monthlyFee === '' || s.monthlyFee === undefined ? null : s.monthlyFee,
       contacted_at: s.contactedAt ?? null,
+      trains: s.trains !== false,
       group_ids: Array.isArray(s.groupIds) && s.groupIds.length ? s.groupIds : [s.groupId],
     }),
     fromRow: (r) => ({
@@ -48,6 +49,7 @@ const MAPPERS = {
       startDate: r.start_date, active: r.active !== false,
       monthlyFee: r.monthly_fee === null || r.monthly_fee === undefined ? null : Number(r.monthly_fee),
       contactedAt: r.contacted_at ?? null,
+      trains: r.trains !== false,
       groupIds: Array.isArray(r.group_ids) && r.group_ids.length ? r.group_ids : [r.group_id],
     }),
   },
@@ -92,20 +94,48 @@ const MAPPERS = {
       skippedDates: r.skipped_dates ?? [], createdAt: r.created_at,
     }),
   },
+  events: {
+    toRow: (e) => ({
+      id: e.id, name: e.name, kind: e.kind, date: e.date,
+      place: e.place || '', note: e.note || '',
+    }),
+    fromRow: (r) => ({
+      id: r.id, name: r.name, kind: r.kind, date: r.date,
+      place: r.place || '', note: r.note || '', createdAt: r.created_at,
+    }),
+  },
+  event_results: {
+    toRow: (v) => ({
+      id: v.id, event_id: v.eventId, student_id: v.studentId,
+      wins: v.wins ?? 0, draws: v.draws ?? 0, losses: v.losses ?? 0,
+      placement: v.placement ?? null, bonus: v.bonus ?? 0,
+      points: v.points ?? 0, note: v.note || '',
+    }),
+    fromRow: (r) => ({
+      id: r.id, eventId: r.event_id, studentId: r.student_id,
+      wins: Number(r.wins) || 0, draws: Number(r.draws) || 0, losses: Number(r.losses) || 0,
+      placement: r.placement ?? null, bonus: Number(r.bonus) || 0,
+      points: Number(r.points) || 0, note: r.note || '',
+    }),
+  },
   club_settings: {
     toRow: (s) => ({
       id: 1, club_name: s.clubName, short_name: s.shortName, motto: s.motto,
       fee: s.fee, tracking_since: s.trackingSince ?? null,
+      scoring: s.scoring ?? null,
+      season_start: s.seasonStart ?? null, season_end: s.seasonEnd ?? null,
     }),
     fromRow: (r) => ({
       clubName: r.club_name, shortName: r.short_name, motto: r.motto,
       fee: Number(r.fee), trackingSince: r.tracking_since ?? null,
+      scoring: r.scoring ?? null,
+      seasonStart: r.season_start ?? null, seasonEnd: r.season_end ?? null,
     }),
   },
 };
 
 /* Poradie zápisu rešpektuje väzby (tréning musí existovať pred dochádzkou). */
-const PUSH_ORDER = ['club_settings', 'trainers', 'groups', 'schedule', 'students', 'sessions', 'attendance', 'payments'];
+const PUSH_ORDER = ['club_settings', 'trainers', 'groups', 'schedule', 'students', 'sessions', 'attendance', 'payments', 'events', 'event_results'];
 
 /* Tabuľky, kde záznam poznáme aj podľa inej dvojice stĺpcov než id —
    keby dvaja tréneri zapísali to isté z dvoch zariadení. */
@@ -371,7 +401,8 @@ export async function pull() {
   state.status = 'syncing';
   emit();
   try {
-    const [trainers, groups, students, sessions, attendance, payments, settings, schedule] = await Promise.all([
+    const [trainers, groups, students, sessions, attendance, payments, settings, schedule,
+      events, eventResults] = await Promise.all([
       selectAll('trainers'),
       selectAll('groups'),
       selectAll('students'),
@@ -384,6 +415,11 @@ export async function pull() {
         state.lastError = 'Rozvrh zatiaľ nie je v databáze — spustite sql/07-rozvrh.sql.';
         return [];
       }),
+      selectAll('events').catch(() => {
+        state.lastError = 'Bodovanie zatiaľ nie je v databáze — spustite sql/08-bodovanie.sql.';
+        return [];
+      }),
+      selectAll('event_results').catch(() => []),
     ]);
 
     const map = (table, rows) => (rows ?? []).map(MAPPERS[table].fromRow);
@@ -395,6 +431,8 @@ export async function pull() {
       attendance: map('attendance', attendance),
       payments: map('payments', payments),
       schedule: map('schedule', schedule),
+      events: map('events', events),
+      eventResults: map('event_results', eventResults),
       settings: settings?.[0] ? MAPPERS.club_settings.fromRow(settings[0]) : null,
     };
 

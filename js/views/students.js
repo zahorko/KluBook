@@ -9,7 +9,7 @@ import {
   db, sortedGroups, groupName, studentsOfGroup, upsertStudent, deleteStudent, studentById,
   paymentStatus, togglePayment, todayISO, periodOf, updateStudent,
   studentFee, hasOwnFee, periodsUpToNow, trackingSince,
-  absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer,
+  absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer, trainsWithClub, everyone,
   studentGroupIds, studentGroupNames, durationMinutes,
 } from '../store.js';
 import { go, refresh } from '../router.js';
@@ -32,7 +32,9 @@ export function renderStudents(root) {
     const q = uiState.query.trim().toLowerCase();
     const students = q
       ? db.students.filter((s) => s.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name, 'sk'))
-      : studentsOfGroup(uiState.groupId, { includeInactive: true });
+      : uiState.groupId === 'netrenuju'
+        ? everyone({ includeInactive: true }).filter((s2) => !trainsWithClub(s2))
+        : studentsOfGroup(uiState.groupId, { includeInactive: true });
 
     const period = periodOf(todayISO());
 
@@ -72,6 +74,16 @@ export function renderStudents(root) {
             onclick: () => { uiState.groupId = g.id; uiState.query = ''; search.value = ''; refresh(); },
           }),
         ),
+        (() => {
+          const netrenuju = everyone({ includeInactive: true }).filter((s2) => !trainsWithClub(s2));
+          return netrenuju.length
+            ? el('button.pill', {
+              text: `Netrénujú · ${netrenuju.length}`,
+              'aria-pressed': String(uiState.groupId === 'netrenuju' && !uiState.query),
+              onclick: () => { uiState.groupId = 'netrenuju'; uiState.query = ''; search.value = ''; refresh(); },
+            })
+            : null;
+        })(),
       ),
       search,
       listBox,
@@ -123,7 +135,9 @@ export function renderStudentDetail(root, studentId) {
         el('span.avatar.avatar--ghost', { text: initials(s.name) }),
         el('span.grow', {},
           el('h2', { text: s.name, style: { fontSize: '20px' } }),
-          el('div.small.muted', { text: studentGroupNames(s).join(' · ') }),
+          el('div.small.muted', {
+            text: trainsWithClub(s) ? studentGroupNames(s).join(' · ') : 'Hrá za klub · nechodí na tréningy',
+          }),
         ),
       ),
       el('div.small.muted', { style: { marginTop: '12px' } },
@@ -245,6 +259,13 @@ export function studentSheet(student, defaultGroupId) {
   const isNew = !student;
   sheet(isNew ? 'Nový žiak' : 'Upraviť žiaka', (body, close) => {
     const name = textInput({ value: student?.name ?? '', placeholder: 'Meno a priezvisko' });
+    const trenuje = el('input', {
+      type: 'checkbox',
+      checked: student ? trainsWithClub(student) : true,
+      style: { width: '20px', height: '20px', accentColor: 'var(--terracotta)' },
+      onchange: () => { skupinyBox.style.display = trenuje.checked ? '' : 'none'; },
+    });
+
     // žiak môže chodiť do viacerých skupín (napr. Pokročilí + Pokročilí online)
     const zvolene = new Set(
       student ? studentGroupIds(student) : [defaultGroupId ?? sortedGroups()[0].id],
@@ -275,9 +296,21 @@ export function studentSheet(student, defaultGroupId) {
     });
     const note = el('textarea.textarea', { placeholder: 'napr. hrá za mládežnícky tím' }, student?.note ?? '');
 
+    const skupinyBox = el('div', { style: { display: (student ? trainsWithClub(student) : true) ? '' : 'none' } },
+      field('Skupiny (môže byť vo viacerých)', groupBox));
+
     mount(body,
       field('Meno *', name),
-      field('Skupiny (môže byť vo viacerých)', groupBox),
+      el('label.row', {
+        style: { gap: '10px', padding: '10px 12px', border: '1px solid var(--cream-line)', borderRadius: 'var(--r-md)', background: 'var(--white)', cursor: 'pointer' },
+      },
+        trenuje,
+        el('span.grow', {},
+          el('div', { text: 'Chodí na tréningy' }),
+          el('div.tiny.faint', { text: 'Odškrtnite pri hráčovi, ktorý za klub len hrá — nebude v skupinách ani v platbách.' }),
+        ),
+      ),
+      skupinyBox,
       field('Kontaktná osoba', contactName),
       el('div.grid2', {}, field('Telefón', phone), field('E-mail', email)),
       el('div.grid2', {}, field('Dátum nástupu', start), field('Mesačný poplatok (€)', fee)),
@@ -289,11 +322,12 @@ export function studentSheet(student, defaultGroupId) {
         style: { marginTop: '8px' },
         onclick: () => {
           if (!name.value.trim()) { toast('Zadajte meno žiaka'); return; }
-          if (!zvolene.size) { toast('Vyberte aspoň jednu skupinu'); return; }
+          if (trenuje.checked && !zvolene.size) { toast('Vyberte aspoň jednu skupinu'); return; }
           upsertStudent({
             id: student?.id,
             name: name.value.trim(),
-            groupIds: [...zvolene],
+            groupIds: trenuje.checked ? [...zvolene] : [],
+            trains: trenuje.checked,
             contactName: contactName.value.trim(),
             contactPhone: phone.value.trim(),
             contactEmail: email.value.trim(),
