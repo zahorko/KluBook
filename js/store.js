@@ -762,6 +762,36 @@ export function leaderboard({ from, to, groupId = null } = {}) {
       || a.student.name.localeCompare(b.student.name, 'sk'));
 }
 
+/** Podujatia jedného hráča aj s výsledkom — pre jeho kartu. */
+export function studentEvents(studentId, obdobie = null) {
+  const { from, to } = obdobie ?? seasonRange();
+  return resultsOfStudent(studentId)
+    .map((r) => ({ result: r, event: eventById(r.eventId) }))
+    .filter((x) => x.event)
+    .filter((x) => x.event.date >= from && x.event.date <= to)
+    .sort((a, b) => b.event.date.localeCompare(a.event.date));
+}
+
+/** Súhrn za sezónu: koľko podujatí, koľko bodov, aká bilancia. */
+export function studentPointsSummary(studentId, obdobie = null) {
+  const zoznam = studentEvents(studentId, obdobie);
+  return zoznam.reduce((acc, { result }) => ({
+    events: acc.events + 1,
+    points: Math.round((acc.points + (Number(result.points) || 0)) * 100) / 100,
+    wins: acc.wins + (result.wins || 0),
+    draws: acc.draws + (result.draws || 0),
+    losses: acc.losses + (result.losses || 0),
+  }), { events: 0, points: 0, wins: 0, draws: 0, losses: 0 });
+}
+
+/** Koľko podujatí má hráč mimo aktuálnej sezóny. */
+export function studentEventsOutsideSeason(studentId) {
+  const { from, to } = seasonRange();
+  return resultsOfStudent(studentId)
+    .map((r) => eventById(r.eventId))
+    .filter((e) => e && (e.date < from || e.date > to)).length;
+}
+
 /* ---- zmeny ---- */
 export function upsertEvent(data) {
   const { id, ...zvysok } = data;

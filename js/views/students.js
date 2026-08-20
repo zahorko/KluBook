@@ -11,6 +11,7 @@ import {
   studentFee, hasOwnFee, periodsUpToNow, trackingSince,
   absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer, trainsWithClub, everyone,
   studentGroupIds, studentGroupNames, durationMinutes,
+  studentEvents, studentPointsSummary, studentEventsOutsideSeason, seasonRange, DRUHY_PODUJATI,
 } from '../store.js';
 import { go, refresh } from '../router.js';
 import { contactSheet, telHref, maKontakt, textVymeskavanie } from '../contact.js';
@@ -209,6 +210,8 @@ export function renderStudentDetail(root, studentId) {
         : null,
     ),
 
+    eventsSection(s),
+
     el('div', {},
       el('h2.section-title', { text: 'Platby' }),
       el('div.card', {},
@@ -346,3 +349,63 @@ export function studentSheet(student, defaultGroupId) {
 }
 
 const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('');
+
+/** Ako sa hráčovi darilo na podujatí — stručne do riadku. */
+function popisVysledku(r) {
+  const partie = (r.wins || 0) + (r.draws || 0) + (r.losses || 0);
+  const casti = [];
+  if (r.placement) casti.push(`${r.placement}. miesto`);
+  if (partie) casti.push(`${r.wins || 0}/${r.draws || 0}/${r.losses || 0} (V/R/P)`);
+  if (!casti.length) casti.push('účasť');
+  return casti.join(' · ');
+}
+
+/** Podujatia, ktorých sa hráč zúčastnil — počet, body a rozpis. */
+function eventsSection(s) {
+  const { from, to } = seasonRange();
+  const suhrn = studentPointsSummary(s.id);
+  const zoznam = studentEvents(s.id);
+  const mimoSezony = studentEventsOutsideSeason(s.id);
+
+  return el('div', {},
+    el('div.row.row--between', { style: { alignItems: 'baseline' } },
+      el('h2.section-title', { text: 'Podujatia a body' }),
+      el('span.tiny.faint', { style: { marginTop: '14px' }, text: `sezóna ${fmtDate(from)} – ${fmtDate(to)}` }),
+    ),
+
+    el('div.stats', {},
+      el('div.stat', {}, el('div.stat__num', { text: String(suhrn.events) }), el('div.stat__lab', { text: 'podujatí' })),
+      el('div.stat', {}, el('div.stat__num', { text: String(suhrn.points) }), el('div.stat__lab', { text: 'bodov' })),
+      el('div.stat', {},
+        el('div.stat__num', { text: `${suhrn.wins}/${suhrn.draws}/${suhrn.losses}` }),
+        el('div.stat__lab', { text: 'výhry/remízy/prehry' })),
+    ),
+
+    zoznam.length === 0
+      ? el('div.empty', { style: { marginTop: '12px' } },
+        'Zatiaľ nehral žiadne podujatie. Pridáte ho v Prehľady → Rebríček.')
+      : el('div.card.card--flush.list', { style: { marginTop: '12px' } },
+        zoznam.map(({ event, result }) =>
+          el('button.item', { onclick: () => go(`/podujatie/${event.id}`) },
+            el('span.grow', {},
+              el('div.item__title', { text: event.name }),
+              el('div.item__sub', {
+                text: `${fmtDayShort(event.date)} · ${DRUHY_PODUJATI[event.kind] ?? event.kind}`
+                  + (event.place ? ` · ${event.place}` : ''),
+              }),
+              el('div.item__sub', { style: { color: 'var(--ink-soft)' }, text: popisVysledku(result) }),
+            ),
+            el('span', { style: { textAlign: 'right' } },
+              el('div.mono', { style: { fontWeight: '700' }, text: `${result.points} b` }),
+            ),
+            el('span.chev', { text: '›' }),
+          ),
+        ),
+      ),
+
+    mimoSezony
+      ? el('p.tiny.faint', { style: { margin: '8px 2px 0' },
+        text: `Mimo tejto sezóny má ešte ${mimoSezony} ${mimoSezony < 5 ? 'podujatia' : 'podujatí'}. Obdobie zmeníte v Prehľady → Rebríček.` })
+      : null,
+  );
+}
