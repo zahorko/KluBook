@@ -84,11 +84,24 @@ export async function signIn(email, password) {
   return s;
 }
 
+/* Obnova prihlásenia beží vždy len raz naraz.
+   Sťahovanie spúšťa desať požiadaviek súčasne a bez tejto poistky by sa
+   všetky pokúsili obnoviť token naraz. Supabase pri opakovanom použití
+   toho istého obnovovacieho tokenu vyhodnotí pokus o zneužitie a zruší
+   celé prihlásenie — tréner by vypadol a musel zadať heslo. */
+let obnovaPrebieha = null;
+
 export async function refreshSession() {
-  const s = session();
-  if (!s?.refreshToken) throw new ApiError('Nie ste prihlásený.', 401);
-  const data = await authRequest('token?grant_type=refresh_token', { refresh_token: s.refreshToken });
-  return storeSession(data);
+  if (obnovaPrebieha) return obnovaPrebieha;
+
+  obnovaPrebieha = (async () => {
+    const s = session();
+    if (!s?.refreshToken) throw new ApiError('Nie ste prihlásený.', 401);
+    const data = await authRequest('token?grant_type=refresh_token', { refresh_token: s.refreshToken });
+    return storeSession(data);
+  })().finally(() => { obnovaPrebieha = null; });
+
+  return obnovaPrebieha;
 }
 
 export async function signOut() {
