@@ -328,6 +328,9 @@ function addPlayersSheet(event, hotovo) {
           },
             el('input', {
               type: 'checkbox',
+              // zoznam sa pri hľadaní prekresľuje — bez tohto by sa už vybraní
+              // hráči tvárili ako nezaškrtnutí, hoci vo výbere ostávajú
+              checked: zvolene.has(s.id),
               style: { width: '20px', height: '20px', accentColor: 'var(--terracotta)' },
               onchange: (e2) => { e2.target.checked ? zvolene.add(s.id) : zvolene.delete(s.id); },
             }),

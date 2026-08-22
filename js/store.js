@@ -869,9 +869,33 @@ export const activeSchedule = () =>
       ? a.startTime.localeCompare(b.startTime)
       : ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7)));  // týždeň od pondelka
 
-/** Existuje k danému dňu a skupine už zapísaný tréning? */
-const sessionExists = (date, groupId) =>
-  db.sessions.some((s) => s.date === date && s.groupId === groupId);
+const minutyDna = (cas) => {
+  const [h, m] = (cas || '0:0').split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+};
+
+/**
+ * Nájde tréning, ktorý zodpovedá konkrétnemu oknu rozvrhu.
+ * Keď má skupina v ten deň jediné okno, stačí zhoda dátumu a skupiny.
+ * Pri viacerých oknách (napr. online o 17:00 aj o 19:00) priradíme
+ * každý zapísaný tréning k oknu s najbližším začiatkom — inak by jeden
+ * zápis „prikryl" obe okná a to druhé by appka nikdy nepýtala.
+ */
+function sessionForSlot(date, slot) {
+  const kandidati = db.sessions.filter((s) => s.date === date && s.groupId === slot.groupId);
+  if (!kandidati.length) return null;
+
+  const okna = (db.schedule ?? []).filter(
+    (x) => x.active !== false && x.groupId === slot.groupId && x.weekday === slot.weekday,
+  );
+  if (okna.length <= 1) return kandidati[0];
+
+  const najblizsieOkno = (trening) => okna.reduce((a, b) => (
+    Math.abs(minutyDna(trening.startTime) - minutyDna(b.startTime))
+      < Math.abs(minutyDna(trening.startTime) - minutyDna(a.startTime)) ? b : a
+  ));
+  return kandidati.find((t) => najblizsieOkno(t).id === slot.id) ?? null;
+}
 
 /** Dnešné položky rozvrhu aj s informáciou, či už sú zapísané. */
 export function todaysSchedule() {
@@ -879,7 +903,7 @@ export function todaysSchedule() {
   const den = new Date().getDay();
   return activeSchedule()
     .filter((r) => r.weekday === den)
-    .map((r) => ({ ...r, zapisany: sessionExists(dnes, r.groupId), date: dnes }));
+    .map((r) => ({ ...r, zapisany: Boolean(sessionForSlot(dnes, r)), date: dnes }));
 }
 
 /**
@@ -897,7 +921,7 @@ export function missingSessions(dniDozadu = 14) {
       const date = todayISO(d);
       if (r.createdAt && date < todayISO(new Date(r.createdAt))) continue;
       if ((r.skippedDates ?? []).includes(date)) continue;
-      if (sessionExists(date, r.groupId)) continue;
+      if (sessionForSlot(date, r)) continue;
       out.push({ ...r, date });
     }
   }
