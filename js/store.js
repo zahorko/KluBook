@@ -570,7 +570,8 @@ export function upsertStudent(data) {
   // groupId a groupIds musia vždy sedieť — groupId je hlavná skupina
   if (Array.isArray(zvysok.groupIds)) {
     zvysok.groupIds = [...new Set(zvysok.groupIds.filter(Boolean))];
-    if (zvysok.groupIds.length) zvysok.groupId = zvysok.groupIds[0];
+    // aj keď je zoznam prázdny — inak by žiakovi ostala stará hlavná skupina
+    zvysok.groupId = zvysok.groupIds[0] ?? null;
   } else if (zvysok.groupId) {
     zvysok.groupIds = [zvysok.groupId];
   }

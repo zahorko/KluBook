@@ -33,14 +33,19 @@ const MAPPERS = {
   },
   students: {
     toRow: (s) => ({
-      id: s.id, name: s.name, group_id: s.groupId,
+      id: s.id, name: s.name,
+      // null, nie undefined — undefined by JSON z riadku úplne vynechal
+      group_id: s.groupId ?? null,
       contact_name: s.contactName || '', contact_phone: s.contactPhone || '',
       contact_email: s.contactEmail || '', note: s.note || '',
       start_date: s.startDate, active: s.active !== false,
       monthly_fee: s.monthlyFee === '' || s.monthlyFee === undefined ? null : s.monthlyFee,
       contacted_at: s.contactedAt ?? null,
       trains: s.trains !== false,
-      group_ids: Array.isArray(s.groupIds) && s.groupIds.length ? s.groupIds : [s.groupId],
+      // pole berieme doslova: prázdne pole znamená „bez skupiny", nie „doplň hlavnú"
+      group_ids: Array.isArray(s.groupIds)
+        ? s.groupIds.filter(Boolean)
+        : (s.groupId ? [s.groupId] : []),
     }),
     fromRow: (r) => ({
       id: r.id, name: r.name, groupId: r.group_id,
@@ -50,7 +55,9 @@ const MAPPERS = {
       monthlyFee: r.monthly_fee === null || r.monthly_fee === undefined ? null : Number(r.monthly_fee),
       contactedAt: r.contacted_at ?? null,
       trains: r.trains !== false,
-      groupIds: Array.isArray(r.group_ids) && r.group_ids.length ? r.group_ids : [r.group_id],
+      groupIds: Array.isArray(r.group_ids)
+        ? r.group_ids.filter(Boolean)
+        : (r.group_id ? [r.group_id] : []),
     }),
   },
   sessions: {
@@ -142,6 +149,7 @@ const PUSH_ORDER = ['club_settings', 'trainers', 'groups', 'schedule', 'students
 const CONFLICT_KEYS = {
   attendance: 'session_id,student_id',
   payments: 'student_id,period',
+  event_results: 'event_id,student_id',
 };
 
 /* ---------------- stav pre UI ---------------- */

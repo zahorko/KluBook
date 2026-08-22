@@ -46,8 +46,13 @@ export function renderStudents(root) {
           students.map((s) => {
             const pay = paymentStatus(s.id, period);
             const vymeska = absenceStreak(s.id).count;
+            // kto nechodí na tréningy, neplatí členské — nesmie svietiť ako dlžník
+            const platiClenske = trainsWithClub(s);
             return el('button.item', { onclick: () => go(`/ziaci/${s.id}`) },
-              el('span', { class: `dot dot--${pay === 'paid' ? 'paid' : 'unpaid'}` }),
+              el('span', {
+                class: `dot dot--${!platiClenske ? 'none' : pay === 'paid' ? 'paid' : 'unpaid'}`,
+                title: platiClenske ? '' : 'Neplatí členské — nechodí na tréningy',
+              }),
               el('span.grow', {},
                 el('div.item__title', {}, s.name,
                   s.active ? null : el('span.tag', { text: 'neaktívny', style: { marginLeft: '8px' } }),
@@ -148,9 +153,11 @@ export function renderStudentDetail(root, studentId) {
             : null),
         s.contactEmail ? el('div', {}, el('a', { href: `mailto:${s.contactEmail}` }, s.contactEmail)) : null,
         el('div', { text: `V klube od: ${fmtDate(s.startDate)}` }),
-        el('div', {
-          text: `Mesačný poplatok: ${studentFee(s)} €${hasOwnFee(s) ? ' (vlastný)' : ' (klubový)'}`,
-        }),
+        trainsWithClub(s)
+          ? el('div', {
+            text: `Mesačný poplatok: ${studentFee(s)} €${hasOwnFee(s) ? ' (vlastný)' : ' (klubový)'}`,
+          })
+          : null,
         s.note ? el('div', { style: { marginTop: '6px', fontStyle: 'italic' }, text: s.note }) : null,
       ),
       maKontakt(s)
@@ -212,13 +219,15 @@ export function renderStudentDetail(root, studentId) {
 
     eventsSection(s),
 
-    el('div', {},
-      el('h2.section-title', { text: 'Platby' }),
-      el('div.card', {},
-        payBox,
-        el('p.tiny.faint', { style: { marginBottom: 0 }, text: 'Ťuknutím prepnete zaplatené / nezaplatené.' }),
-      ),
-    ),
+    trainsWithClub(s)
+      ? el('div', {},
+        el('h2.section-title', { text: 'Platby' }),
+        el('div.card', {},
+          payBox,
+          el('p.tiny.faint', { style: { marginBottom: 0 }, text: 'Ťuknutím prepnete zaplatené / nezaplatené.' }),
+        ),
+      )
+      : null,
 
     el('div', {},
       el('h2.section-title', { text: 'História tréningov' }),
