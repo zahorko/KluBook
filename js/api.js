@@ -166,7 +166,7 @@ function translateAuthError(data) {
 }
 
 /* ---------------- databáza (PostgREST) ---------------- */
-async function restRequest(path, { method = 'GET', body, prefer } = {}) {
+async function restRequest(path, { method = 'GET', body, prefer, rozsah, sHlavickami } = {}) {
   const token = await accessToken();
   const headers = {
     apikey: apiKey(),
@@ -174,6 +174,7 @@ async function restRequest(path, { method = 'GET', body, prefer } = {}) {
     'Content-Type': 'application/json',
   };
   if (prefer) headers.Prefer = prefer;
+  if (rozsah) headers.Range = `${rozsah[0]}-${rozsah[1]}`;
 
   const res = await fetch(`${baseUrl()}/rest/v1/${path}`, {
     method,
@@ -181,13 +182,17 @@ async function restRequest(path, { method = 'GET', body, prefer } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
 
+  // 416 = pýtali sme riadky za koncom tabuľky, čiže už niet čo sťahovať.
+  if (res.status === 416 && rozsah) return sHlavickami ? { data: [], hlavicka: '' } : [];
+
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new ApiError(prelozChybuDatabazy(data, res.status), res.status, data);
   }
-  if (res.status === 204) return null;
+  if (res.status === 204) return sHlavickami ? { data: null, hlavicka: '' } : null;
   const text = await res.text();
-  return text ? JSON.parse(text) : null;
+  const data = text ? JSON.parse(text) : null;
+  return sHlavickami ? { data, hlavicka: res.headers.get('Content-Range') || '' } : data;
 }
 
 /** Databázové hlášky, ktoré má zmysel ukázať trénerovi po slovensky. */
@@ -200,7 +205,30 @@ function prelozChybuDatabazy(data, status) {
   return text || `Chyba databázy (${status})`;
 }
 
-export const selectAll = (table) => restRequest(`${table}?select=*`);
+/* Databáza pošle naraz najviac tisíc riadkov. Tabuľku preto sťahujeme
+   po dávkach, kým nemáme všetky riadky, ktoré server hlási. Bez toho by
+   sa pri väčšom počte žiakov či dochádzky časť údajov ticho stratila. */
+const DAVKA = 1000;
+
+export async function selectAll(table) {
+  const vsetko = [];
+  for (;;) {
+    const od = vsetko.length;
+    const { data, hlavicka } = await restRequest(`${table}?select=*&order=id.asc`, {
+      prefer: 'count=exact',
+      rozsah: [od, od + DAVKA - 1],
+      sHlavickami: true,
+    });
+    const davka = Array.isArray(data) ? data : [];
+    vsetko.push(...davka);
+    if (!davka.length) break;
+
+    // Hlavička vyzerá ako „0-999/1234" — za lomkou je celkový počet riadkov.
+    const celkom = Number(String(hlavicka).split('/')[1]);
+    if (Number.isFinite(celkom) ? vsetko.length >= celkom : davka.length < DAVKA) break;
+  }
+  return vsetko;
+}
 
 /** Vloží alebo prepíše riadky. `onConflict` = stĺpce, podľa ktorých
     sa pozná už existujúci záznam (inak primárny kľúč). */
