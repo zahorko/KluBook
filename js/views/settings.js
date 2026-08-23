@@ -4,7 +4,7 @@
 import { el, mount, toast, sheet, confirmSheet, field, textInput, selectInput, downloadFile } from '../ui.js';
 import {
   db, isCloud, saveNow, logout, initialsOf, uid, newSalt, hashPin, setDemoPin,
-  exportJSON, importJSON, resetAll, clearDemoData, todayISO,
+  exportJSON, importJSON, importJSONToCloud, resetAll, clearDemoData, todayISO,
   updateSettings, updateTrainer, applyServerData, syncNow,
   setDevicePin, hasDevicePin, devicePinEmail, lockApp,
   studentById, groupName, trackingSince,
@@ -638,13 +638,13 @@ function dataCard() {
     el('div.card.stack', {},
       el('p.small.muted', { style: { margin: 0 },
         text: isCloud()
-          ? 'Dáta sú v spoločnej databáze klubu a synchronizujú sa medzi trénermi. Zálohu si môžete stiahnuť ako súbor.'
+          ? 'Dáta sú v spoločnej databáze klubu a synchronizujú sa medzi trénermi. Zálohu si môžete stiahnuť ako súbor a v prípade potreby ju z neho obnoviť.'
           : 'Demo režim: dáta sú len v tomto zariadení. Zálohu si stiahnite ako súbor.' }),
       el('button.btn.btn--ghost.btn--block', {
         text: '⤓ Stiahnuť zálohu (JSON)',
         onclick: () => { downloadFile(`klubook-zaloha-${todayISO()}.json`, exportJSON()); toast('Záloha stiahnutá'); },
       }),
-      isCloud() ? null : el('button.btn.btn--ghost.btn--block', { text: '⤒ Obnoviť zo zálohy', onclick: importFlow }),
+      el('button.btn.btn--ghost.btn--block', { text: '⤒ Obnoviť zo zálohy', onclick: importFlow }),
       db.demo
         ? el('button.btn.btn--danger.btn--block', {
           text: 'Vymazať demo dáta a začať načisto',
@@ -685,9 +685,29 @@ function importFlow() {
     const file = input.files?.[0];
     if (!file) return;
     try {
-      importJSON(await file.text());
-      toast('Dáta obnovené');
-      location.reload();
+      const text = await file.text();
+      if (!isCloud()) {
+        importJSON(text);
+        toast('Dáta obnovené');
+        location.reload();
+        return;
+      }
+
+      // V cloude obnova nezasiahne len toto zariadenie, ale celý klub —
+      // preto sa pýtame jasne a hovoríme, čo sa stane.
+      const ok = await confirmSheet('Obnoviť dáta zo zálohy?',
+        'Obsah zálohy sa nahrá do tohto zariadenia a potom aj na server, takže ho uvidia všetci tréneri. '
+        + 'Čo je dnes v databáze navyše oproti zálohe, ostane — obnova dáta dopĺňa a prepisuje, nemaže. '
+        + 'Použite len zálohu z tejto appky.',
+        { danger: true, okLabel: 'Obnoviť' });
+      if (!ok) return;
+
+      const { zaznamov, preskocenychTrenerov } = importJSONToCloud(text);
+      toast(`Obnovených ${zaznamov} záznamov — odosielam na server`);
+      if (preskocenychTrenerov) {
+        setTimeout(() => toast(`${preskocenychTrenerov} trénerov zo zálohy server nepozná — preskočení`), 2600);
+      }
+      setTimeout(() => location.reload(), 1200);
     } catch (e) {
       toast(`Chyba: ${e.message}`);
     }

@@ -39,31 +39,43 @@ export function renderStudents(root) {
 
     const period = periodOf(todayISO());
 
-    mount(listBox, 
+    // Archivovaných dávame nabok — inak nesedí počet pri názve skupiny
+    // so zoznamom pod ním a tréner zbytočne prepočítava.
+    const aktivni = students.filter((s) => s.active);
+    const archivovani = students.filter((s) => !s.active);
+
+    const riadok = (s) => {
+      const pay = paymentStatus(s.id, period);
+      const vymeska = absenceStreak(s.id).count;
+      // kto nechodí na tréningy, neplatí členské — nesmie svietiť ako dlžník
+      const platiClenske = trainsWithClub(s);
+      return el('button.item', { onclick: () => go(`/ziaci/${s.id}`) },
+        el('span', {
+          class: `dot dot--${!platiClenske ? 'none' : pay === 'paid' ? 'paid' : 'unpaid'}`,
+          title: platiClenske ? '' : 'Neplatí členské — nechodí na tréningy',
+        }),
+        el('span.grow', {},
+          el('div.item__title', {}, s.name,
+            vymeska >= ABSENCE_ALERT
+              ? el('span.tag.tag--unpaid', { text: `chýba ${vymeska}×`, style: { marginLeft: '8px' } })
+              : null),
+          el('div.item__sub', { text: q ? groupName(s.groupId) : (s.contactPhone || s.contactName || '—') }),
+        ),
+        el('span.chev', { text: '›' }),
+      );
+    };
+
+    mount(listBox,
       students.length === 0
         ? el('div.empty', {}, el('span.empty__mark', { text: '♟' }), 'Žiadni žiaci. Pridajte prvého tlačidlom nižšie.')
-        : el('div.card.card--flush.list', {},
-          students.map((s) => {
-            const pay = paymentStatus(s.id, period);
-            const vymeska = absenceStreak(s.id).count;
-            // kto nechodí na tréningy, neplatí členské — nesmie svietiť ako dlžník
-            const platiClenske = trainsWithClub(s);
-            return el('button.item', { onclick: () => go(`/ziaci/${s.id}`) },
-              el('span', {
-                class: `dot dot--${!platiClenske ? 'none' : pay === 'paid' ? 'paid' : 'unpaid'}`,
-                title: platiClenske ? '' : 'Neplatí členské — nechodí na tréningy',
-              }),
-              el('span.grow', {},
-                el('div.item__title', {}, s.name,
-                  s.active ? null : el('span.tag', { text: 'neaktívny', style: { marginLeft: '8px' } }),
-                  vymeska >= ABSENCE_ALERT
-                    ? el('span.tag.tag--unpaid', { text: `chýba ${vymeska}×`, style: { marginLeft: '8px' } })
-                    : null),
-                el('div.item__sub', { text: q ? groupName(s.groupId) : (s.contactPhone || s.contactName || '—') }),
-              ),
-              el('span.chev', { text: '›' }),
-            );
-          }),
+        : el('div.stack', {},
+          aktivni.length ? el('div.card.card--flush.list', {}, aktivni.map(riadok)) : null,
+          archivovani.length
+            ? el('div', {},
+              el('h2.section-title', { text: `Neaktívni · ${archivovani.length}` }),
+              el('div.card.card--flush.list', { style: { opacity: '.65' } }, archivovani.map(riadok)),
+            )
+            : null,
         ),
     );
   };

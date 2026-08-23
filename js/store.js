@@ -1117,9 +1117,51 @@ export const exportJSON = () => JSON.stringify(db, null, 2);
 export function importJSON(text) {
   const parsed = JSON.parse(text);
   if (!parsed?.version || !Array.isArray(parsed.students)) throw new Error('Neplatný súbor zálohy.');
+  // staršia záloha nemusí poznať novšie tabuľky — doplníme ich prázdne,
+  // inak by appka spadla hneď pri prvom otvorení rozvrhu či podujatí
+  parsed.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
+  parsed.groups = parsed.groups?.length ? parsed.groups : GROUPS;
+  for (const k of ['trainers', 'sessions', 'attendance', 'payments', 'schedule', 'events', 'eventResults']) {
+    if (!Array.isArray(parsed[k])) parsed[k] = [];
+  }
   for (const k of Object.keys(db)) delete db[k];
   Object.assign(db, parsed);
   saveNow();
+  return parsed;
+}
+
+/**
+ * Obnova zo zálohy v cloude. Samotné načítanie do zariadenia nestačí —
+ * najbližšie sťahovanie zo servera by obnovené dáta prepísalo. Preto ich
+ * celé postavíme do fronty na odoslanie, aby sa dostali späť aj na server.
+ *
+ * Trénerov posielame len tých, ktorých server už pozná: účty vznikajú
+ * v Supabase, nie v zálohe, a neznámy tréner by sa odmietol aj s tréningami.
+ */
+export function importJSONToCloud(text) {
+  const znamiTreneri = new Set(db.trainers.map((t) => t.id));
+  importJSON(text);
+  db.demo = false;
+
+  const davky = [
+    ['club_settings', [db.settings]],
+    ['groups', db.groups],
+    ['trainers', db.trainers.filter((t) => znamiTreneri.has(t.id))],
+    ['students', db.students],
+    ['sessions', db.sessions],
+    ['attendance', db.attendance],
+    ['payments', db.payments],
+    ['schedule', db.schedule],
+    ['events', db.events],
+    ['event_results', db.eventResults],
+  ];
+
+  let pocet = 0;
+  for (const [tabulka, riadky] of davky) {
+    for (const r of riadky ?? []) { queueUpsert(tabulka, r); pocet++; }
+  }
+  saveNow();
+  return { zaznamov: pocet, preskocenychTrenerov: db.trainers.length - db.trainers.filter((t) => znamiTreneri.has(t.id)).length };
 }
 
 export function resetAll() {

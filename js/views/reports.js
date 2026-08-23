@@ -101,7 +101,13 @@ function trainersReport(from, to) {
     ),
 
     el('div', {},
-      el('h2.section-title', { text: 'Zoznam tréningov' }),
+      el('div.row.row--between', { style: { alignItems: 'baseline' } },
+        el('h2.section-title', { text: 'Zoznam tréningov' }),
+        // dlhý zoznam orezávame kvôli rýchlosti — nech je jasné, že nie je celý
+        sessions.length > 60
+          ? el('span.tiny.faint', { text: `zobrazených 60 z ${sessions.length} · celý zoznam v CSV` })
+          : null,
+      ),
       sessions.length === 0
         ? el('div.empty', { text: 'Nič na zobrazenie.' })
         : el('div.card.tablewrap', {},
