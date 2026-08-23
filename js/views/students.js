@@ -269,18 +269,26 @@ export function renderStudentDetail(root, studentId) {
 /* ---------------- formulár žiaka ---------------- */
 export function studentSheet(student, defaultGroupId) {
   const isNew = !student;
+  // „netrenuju" je záložka zoznamu, nie skupina — nový človek pod ňou
+  // je hráč, ktorý na tréningy nechodí. Predvolíme mu to a žiadnu skupinu.
+  const zoZalozkyNetrenuju = defaultGroupId === 'netrenuju';
+  const predvolenaSkupina = !zoZalozkyNetrenuju && sortedGroups().some((g) => g.id === defaultGroupId)
+    ? defaultGroupId
+    : sortedGroups()[0]?.id;
+
   sheet(isNew ? 'Nový žiak' : 'Upraviť žiaka', (body, close) => {
     const name = textInput({ value: student?.name ?? '', placeholder: 'Meno a priezvisko' });
     const trenuje = el('input', {
       type: 'checkbox',
-      checked: student ? trainsWithClub(student) : true,
+      checked: student ? trainsWithClub(student) : !zoZalozkyNetrenuju,
       style: { width: '20px', height: '20px', accentColor: 'var(--terracotta)' },
       onchange: () => { skupinyBox.style.display = trenuje.checked ? '' : 'none'; },
     });
 
     // žiak môže chodiť do viacerých skupín (napr. Pokročilí + Pokročilí online)
     const zvolene = new Set(
-      student ? studentGroupIds(student) : [defaultGroupId ?? sortedGroups()[0].id],
+      student ? studentGroupIds(student)
+        : (zoZalozkyNetrenuju ? [] : [predvolenaSkupina].filter(Boolean)),
     );
     const groupBox = el('div.stack', { style: { gap: '6px' } },
       sortedGroups().map((g) =>
@@ -308,7 +316,7 @@ export function studentSheet(student, defaultGroupId) {
     });
     const note = el('textarea.textarea', { placeholder: 'napr. hrá za mládežnícky tím' }, student?.note ?? '');
 
-    const skupinyBox = el('div', { style: { display: (student ? trainsWithClub(student) : true) ? '' : 'none' } },
+    const skupinyBox = el('div', { style: { display: (student ? trainsWithClub(student) : !zoZalozkyNetrenuju) ? '' : 'none' } },
       field('Skupiny (môže byť vo viacerých)', groupBox));
 
     mount(body,

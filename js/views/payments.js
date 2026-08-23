@@ -120,10 +120,14 @@ export function renderPayments(root) {
           text: 'Všetci zaplatili',
           style: { marginTop: '14px' },
           onclick: () => {
-            for (const s of students) {
+            // Kto už zaplatené má, toho sa nedotkneme — inak by sme mu prepísali
+            // zapísanú sumu a dátum úhrady klubovým poplatkom a dneškom.
+            const chybajuci = students.filter((s) => paymentStatus(s.id, period) !== 'paid');
+            if (!chybajuci.length) { toast(`${g.name}: všetci už zaplatili`); return; }
+            for (const s of chybajuci) {
               setPayment(s.id, period, 'paid', { amount: studentFee(s), paidDate: todayISO() });
             }
-            toast(`${g.name}: označené ako zaplatené`);
+            toast(`${g.name}: doplnených ${chybajuci.length}`);
             refresh();
           },
         }),

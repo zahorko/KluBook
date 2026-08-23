@@ -593,7 +593,10 @@ export function upsertStudent(data) {
 
   // groupId a groupIds musia vždy sedieť — groupId je hlavná skupina
   if (Array.isArray(zvysok.groupIds)) {
-    zvysok.groupIds = [...new Set(zvysok.groupIds.filter(Boolean))];
+    zvysok.groupIds = [...new Set(zvysok.groupIds.filter(Boolean))]
+      // Neexistujúcu skupinu zahodíme. Taký žiak by sa nezobrazil v žiadnom
+      // zozname, ale do platieb by sa počítal — a čísla by nesedeli.
+      .filter((gid) => !db.groups.length || db.groups.some((g) => g.id === gid));
     // aj keď je zoznam prázdny — inak by žiakovi ostala stará hlavná skupina
     zvysok.groupId = zvysok.groupIds[0] ?? null;
   } else if (zvysok.groupId) {
@@ -1032,16 +1035,19 @@ export function paidAmount(studentId, period) {
   return p.amount === null || p.amount === undefined ? studentFee(studentId) : Number(p.amount) || 0;
 }
 
-export function setPayment(studentId, period, status, { amount = null, paidDate = null, note = '' } = {}) {
+/* `note` nechávame nevyplnené zámerne: keď ho volajúci neposiela (napr.
+   prepnutie zaplatené/nezaplatené), poznámka ostáva. Keď pošle prázdny
+   reťazec, tréner ju naozaj vymazal — a vtedy sa vymazať musí. */
+export function setPayment(studentId, period, status, { amount = null, paidDate = null, note } = {}) {
   let p = paymentFor(studentId, period);
   if (!p) {
-    p = { id: uid('pay'), studentId, period, status, paidDate, amount, note };
+    p = { id: uid('pay'), studentId, period, status, paidDate, amount, note: note ?? '' };
     db.payments.push(p);
   } else {
     p.status = status;
     p.paidDate = paidDate;
     p.amount = amount;
-    if (note) p.note = note;
+    if (note !== undefined) p.note = note;
   }
   sync.up('payments', p);
   save();

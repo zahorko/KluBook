@@ -37,6 +37,10 @@ const app = document.getElementById('app');
 const shortName = () => db.settings.shortName || db.settings.clubName;
 const modalOpen = () => document.getElementById('modal-root').childElementCount > 0;
 
+/* Ktorú obrazovku sme vykreslili naposledy — aby prekreslenie tej istej
+   obrazovky neodskočilo hore. */
+let poslednaObrazovka = null;
+
 function render() {
   stopClock();
   const trainer = currentTrainer();
@@ -53,6 +57,13 @@ function render() {
 
   const { path, param } = currentRoute();
   if (!path || !TITLES[path]) { go('/trening'); return; }
+
+  // Na novú obrazovku ideme odhora. Tú istú obrazovku (po synchronizácii
+  // alebo po uložení) necháme tam, kde tréner práve je — v hárku dochádzky
+  // je to rozdiel medzi použiteľným a otravným.
+  const obrazovka = `${path}/${param ?? ''}`;
+  const posun = obrazovka === poslednaObrazovka ? window.scrollY : 0;
+  poslednaObrazovka = obrazovka;
 
   const content = el('main.main');
   mount(app, el('div.shell', {}, topbar(path, param, trainer), content, navbar(path)));
@@ -78,7 +89,7 @@ function render() {
       break;
   }
 
-  window.scrollTo(0, 0);
+  window.scrollTo(0, posun);
 }
 
 /* Účet existuje, ale nie je zapísaný v tabuľke trénerov. */
@@ -176,9 +187,15 @@ onRefresh(render);
   render();
 
   if (isCloud()) {
+    let poslednyStav = null;
     startAutoSync((data) => {
       applyServerData(data);
-      // neprekreslíme, kým má tréner otvorený formulár
+      // Keď sa na serveri nič nezmenilo, nemá čo prekresľovať — appka
+      // sa každú minútu pýta servera, ale obrazovka sa hýbať nemusí.
+      const odtlacok = JSON.stringify(data);
+      if (odtlacok === poslednyStav) return;
+      poslednyStav = odtlacok;
+      // neprekreslíme ani vtedy, kým má tréner otvorený formulár
       if (!modalOpen()) render();
     });
   }
