@@ -183,11 +183,21 @@ async function restRequest(path, { method = 'GET', body, prefer } = {}) {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new ApiError(data?.message || `Chyba databázy (${res.status})`, res.status, data);
+    throw new ApiError(prelozChybuDatabazy(data, res.status), res.status, data);
   }
   if (res.status === 204) return null;
   const text = await res.text();
   return text ? JSON.parse(text) : null;
+}
+
+/** Databázové hlášky, ktoré má zmysel ukázať trénerovi po slovensky. */
+function prelozChybuDatabazy(data, status) {
+  const text = String(data?.message || '');
+  if (/issued at future|used before issued/i.test(text)) {
+    return 'Hodiny servera sa o zlomok sekundy rozchádzajú. Skúste o chvíľu znova.';
+  }
+  if (/JWT expired/i.test(text)) return 'Prihlásenie vypršalo, prihláste sa znova.';
+  return text || `Chyba databázy (${status})`;
 }
 
 export const selectAll = (table) => restRequest(`${table}?select=*`);

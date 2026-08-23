@@ -320,11 +320,35 @@ export function currentTrainer() {
   return db.trainers.find((t) => t.id === id && t.active) ?? null;
 }
 
+/**
+ * Stiahne dáta a pri neúspechu to chvíľu skúša znova.
+ * Hneď po prihlásení môže byť token o zlomok sekundy „mladší" než hodiny
+ * služby, ktorá ho overuje, a prvé stiahnutie zlyhá na „JWT issued at future".
+ * O sekundu je už všetko v poriadku.
+ */
+async function pullSPokusmi(pokusov = 3) {
+  for (let i = 0; i < pokusov; i++) {
+    try {
+      return await pull();
+    } catch (e) {
+      if (i === pokusov - 1) {
+        console.warn('Prvé stiahnutie po prihlásení zlyhalo:', e.message);
+        return null;
+      }
+      await new Promise((r) => setTimeout(r, 700 * (i + 1)));
+    }
+  }
+  return null;
+}
+
 /** Cloud: prihlásenie e-mailom a heslom. */
 export async function signInWithPassword(email, password) {
   await api.signIn(email, password);
-  const data = await pull();
-  applyServerData(data);
+  // Prihlásenie už prebehlo. Ak sa dáta nestihnú stiahnuť, pustíme trénera
+  // dnu aj tak — appka má lokálnu kópiu a automatická synchronizácia
+  // dotiahne zvyšok. Zhodiť kvôli tomu celé prihlásenie by bolo zbytočné.
+  const data = await pullSPokusmi();
+  if (data) applyServerData(data);
   return currentTrainer();
 }
 
