@@ -15,6 +15,9 @@ import { selectAll, upsertRows, deleteRow, ApiError } from './api.js';
 const OUTBOX_KEY = 'klubook.outbox';
 const META_KEY = 'klubook.syncmeta';
 const MAX_ATTEMPTS = 5;
+/* Dochádzka celej skupiny je aj 25 riadkov naraz — pri strope 20 by sa
+   časť zlyhaní po reštarte stratila skôr, než by ich tréner videl. */
+const MAX_FAILED = 200;
 
 /* ---------------- prevod medzi appkou a databázou ---------------- */
 /* Appka používa camelCase, databáza snake_case. */
@@ -160,6 +163,8 @@ export const state = {
   lastSync: meta().lastSync ?? null,
   lastError: null,
   failed: meta().failed ?? [],
+  // varovanie o nespustenej migrácii — visí, kým ho tréner neodklikne
+  schemaWarning: meta().schemaWarning ?? null,
 };
 
 export const onSyncChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
@@ -173,7 +178,9 @@ function meta() {
   }
 }
 const saveMeta = () => localStorage.setItem(META_KEY, JSON.stringify({
-  lastSync: state.lastSync, failed: state.failed.slice(-20),
+  lastSync: state.lastSync,
+  failed: state.failed.slice(-MAX_FAILED),
+  schemaWarning: state.schemaWarning,
 }));
 
 /* ---------------- fronta zmien (outbox) ---------------- */
@@ -286,8 +293,13 @@ export async function push() {
           const chyba = chybajucaKolonka(e);
           let vyriesene = false;
           if (chyba) {
-            state.lastError = `Databáza nepozná stĺpec „${chyba}" — spustite v Supabase najnovší SQL súbor `
+            const hlaska = `Databáza nepozná stĺpec „${chyba}" — spustite v Supabase najnovší SQL súbor `
               + 'z priečinka sql/. Zmeny sa zatiaľ ukladajú bez tohto údaja.';
+            state.lastError = hlaska;
+            // lastError pri najbližšom úspešnom sťahovaní zmizne, preto si
+            // varovanie odkladáme aj natrvalo
+            state.schemaWarning = { column: chyba, message: hlaska, at: new Date().toISOString(), table };
+            saveMeta();
             const orezane = upserts.map((o) => {
               const kopia = { ...o.row };
               delete kopia[chyba];
@@ -395,6 +407,13 @@ export function clearFailed() {
   emit();
 }
 
+/** Tréner potvrdil, že vie o nespustenej migrácii. */
+export function clearSchemaWarning() {
+  state.schemaWarning = null;
+  saveMeta();
+  emit();
+}
+
 /** Z chyby databázy vytiahne názov chýbajúceho stĺpca (chýbajúca migrácia). */
 function chybajucaKolonka(err) {
   const text = String(err?.details?.message || err?.message || '');
@@ -475,6 +494,7 @@ export function clearOutbox() {
 export function resetSyncState() {
   clearOutbox();
   state.failed = [];
+  state.schemaWarning = null;
   state.lastSync = null;
   localStorage.removeItem(META_KEY);
   emit();

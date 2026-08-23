@@ -12,7 +12,9 @@ import {
   scoringRules, updateScoring, recomputeAllPoints, DRUHY_PODUJATI,
 } from '../store.js';
 import { changePassword, session } from '../api.js';
-import { state as syncState, onSyncChange, resetSyncState, retryFailed, clearFailed } from '../sync.js';
+import {
+  state as syncState, onSyncChange, resetSyncState, retryFailed, clearFailed, clearSchemaWarning,
+} from '../sync.js';
 import { go, refresh } from '../router.js';
 
 export function renderSettings(root, trainer) {
@@ -24,10 +26,29 @@ export function renderSettings(root, trainer) {
     scoringCard(),
     clubCard(),
     dataCard(),
-    el('p.tiny.faint.center', {
-      text: `KluBook · ${db.settings.clubName} · ${isCloud() ? 'pripojené k databáze' : 'demo režim'}`,
-    }),
+    versionLine(),
   ));
+}
+
+/**
+ * Číslo verzie berieme z názvu offline cache, ktorý spravuje service worker —
+ * je to jediné miesto, kde verzia žije, takže sa nemôže rozísť.
+ * Keď ti tréner po telefóne prečíta číslo, hneď vieš, na čom beží.
+ */
+function versionLine() {
+  const riadok = el('p.tiny.faint.center', {
+    text: `KluBook · ${db.settings.clubName} · ${isCloud() ? 'pripojené k databáze' : 'demo režim'}`,
+  });
+
+  if ('caches' in window) {
+    caches.keys().then((mena) => {
+      const verzia = mena.find((m) => m.startsWith('klubook-'));
+      if (!document.body.contains(riadok)) return;
+      riadok.textContent = `KluBook ${verzia ? verzia.replace('klubook-', '') : '(vývojová)'}`
+        + ` · ${db.settings.clubName} · ${isCloud() ? 'pripojené k databáze' : 'demo režim'}`;
+    }).catch(() => {});
+  }
+  return riadok;
 }
 
 /* ---------------- účet ---------------- */
@@ -197,9 +218,21 @@ function syncCard() {
     paint();
   });
 
+  const varovanie = syncState.schemaWarning
+    ? el('div.card', { style: { background: 'var(--red-l)', borderColor: 'transparent' } },
+      el('div', { style: { fontWeight: '600', marginBottom: '4px' }, text: '⚠ Databáza nie je aktuálna' }),
+      el('p.small', { style: { margin: '0 0 10px' }, text: syncState.schemaWarning.message }),
+      el('button.btn.btn--ghost.btn--sm', {
+        text: 'Už som to spustil',
+        onclick: () => { clearSchemaWarning(); toast('Skryté'); refresh(); },
+      }),
+    )
+    : null;
+
   return el('div', {},
     el('h2.section-title', { text: 'Synchronizácia' }),
-    el('div.card.stack', {},
+    varovanie,
+    el('div.card.stack', { style: varovanie ? { marginTop: '12px' } : {} },
       line,
       el('button.btn.btn--soft.btn--block', {
         text: 'Synchronizovať teraz',

@@ -5,7 +5,7 @@
    ========================================================= */
 /* Pri každom nasadení novej verzie zvýšte číslo — prehliadač si tým
    vyžiada čerstvé súbory a starú cache zmaže. */
-const CACHE = 'klubook-v26';
+const CACHE = 'klubook-v27';
 
 const SHELL = [
   './',
@@ -78,17 +78,36 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ostatné: cache-first s tichou aktualizáciou
-  event.respondWith(
-    caches.match(request).then((hit) => {
-      const network = fetch(request).then((res) => {
-        if (res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(request, copy));
-        }
-        return res;
-      }).catch(() => hit);
-      return hit || network;
-    }),
-  );
+  /* Kód (JS, CSS) berieme prednostne zo siete a cache je len záloha pre
+     offline. Predtým sa vracala cache a nová verzia sa ukladala až na
+     ďalšie spustenie — tréner tak mohol po oprave chyby bežať na starom
+     kóde a nikto o tom nevedel. Súborov je pár desiatok kilobajtov. */
+  if (/\.(?:js|css)$/.test(url.pathname)) {
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(request, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(request)),
+    );
+    return;
+  }
+
+  // ostatné (ikony, manifest): cache-first s aktualizáciou na pozadí
+  const aktualizacia = fetch(request).then((res) => {
+    if (res.ok) {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(request, copy));
+    }
+    return res;
+  }).catch(() => null);
+
+  // waitUntil voláme synchrónne, inak prehliadač môže worker uspať
+  // skôr, než sa aktualizácia stihne zapísať
+  event.waitUntil(aktualizacia);
+  event.respondWith(caches.match(request).then((hit) => hit || aktualizacia));
 });
