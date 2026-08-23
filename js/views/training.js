@@ -9,6 +9,7 @@ import {
   db, sortedGroups, groupName, trainerName, openSession, unfinishedSessions,
   startSession, endSession,
   addManualSession, deleteSession, studentsOfGroup, attendanceOfSession, setAttendance,
+  sessionRoster, pridatelniDoTreningu, studentGroupNames,
   paymentStatus, durationMinutes, todayISO, nowHM, periodOf, sessionsInRange, updateSession,
   droppingStudents, markContacted, currentTrainer,
   todaysSchedule, missingSessions, markScheduleSkipped, DNI,
@@ -403,11 +404,12 @@ export function renderSession(root, trainer, sessionId) {
   }
 
   const period = periodOf(session.date);
-  const students = studentsOfGroup(session.groupId);
   const counter = el('span.tag');
   const listBox = el('div.att-list');
 
   const paint = () => {
+    // zoznam počítame nanovo — žiak sa dá do hárku doplniť aj dodatočne
+    const students = sessionRoster(session);
     const att = attendanceOfSession(session.id);
     const map = new Map(att.map((a) => [a.studentId, a]));
     const present = students.filter((s) => map.get(s.id)?.present).length;
@@ -415,7 +417,9 @@ export function renderSession(root, trainer, sessionId) {
 
     mount(listBox, 
       students.length === 0
-        ? el('div.empty', {}, 'V tejto skupine zatiaľ nie sú žiadni žiaci.')
+        ? el('div.empty', {}, session.endTime
+          ? 'V tomto tréningu nie je zapísaný žiaden žiak. Doplňte ich tlačidlom nižšie.'
+          : 'V tejto skupine zatiaľ nie sú žiadni žiaci.')
         : students.map((s) => {
           const rec = map.get(s.id);
           const state = rec ? (rec.present ? 'present' : 'absent') : 'none';
@@ -439,7 +443,7 @@ export function renderSession(root, trainer, sessionId) {
   };
 
   const markAll = (present) => {
-    for (const s of students) setAttendance(session.id, s.id, present);
+    for (const s of sessionRoster(session)) setAttendance(session.id, s.id, present);
     paint();
     toast(present ? 'Všetci označení ako prítomní' : 'Všetci označení ako neprítomní');
   };
@@ -476,8 +480,16 @@ export function renderSession(root, trainer, sessionId) {
 
     el('div', {},
       el('h2.section-title', { text: 'Dochádzka žiakov' }),
-      el('p.tiny.faint', { style: { margin: '-4px 2px 10px' }, text: 'Ťuknutím na meno prepnete prítomný / neprítomný. Bodka vľavo = stav platby za tento mesiac.' }),
+      el('p.tiny.faint', { style: { margin: '-4px 2px 10px' },
+        text: session.endTime
+          ? 'Zoznam ukazuje, kto bol na tomto tréningu zapísaný. Ťuknutím na meno prepnete prítomný / neprítomný.'
+          : 'Ťuknutím na meno prepnete prítomný / neprítomný. Bodka vľavo = stav platby za tento mesiac.' }),
       listBox,
+      el('button.btn.btn--ghost.btn--block', {
+        text: '＋ Doplniť žiaka do dochádzky',
+        style: { marginTop: '10px' },
+        onclick: () => doplnitZiakaSheet(session, paint),
+      }),
     ),
 
     el('div.row', { style: { gap: '10px' } },
@@ -497,6 +509,55 @@ export function renderSession(root, trainer, sessionId) {
 }
 
 /* ---------------- hárky ---------------- */
+
+/** Doplnenie žiaka do dochádzky tréningu — pre toho, kto prišiel, ale
+    v skupine vtedy ešte nebol (alebo ho medzitým niekto archivoval). */
+function doplnitZiakaSheet(session, after) {
+  sheet('Doplniť žiaka do dochádzky', (body, close) => {
+    const kandidati = pridatelniDoTreningu(session);
+    if (!kandidati.length) {
+      mount(body, el('div.empty', { text: 'Všetci žiaci klubu už v tomto tréningu sú.' }));
+      return;
+    }
+    const hladaj = textInput({ placeholder: 'Hľadať žiaka…', oninput: () => vykresli() });
+    const zoznam = el('div.card.card--flush.list');
+
+    const vykresli = () => {
+      const q = hladaj.value.trim().toLowerCase();
+      const vyber = q ? kandidati.filter((s) => s.name.toLowerCase().includes(q)) : kandidati;
+      mount(zoznam, vyber.length === 0
+        ? el('div.empty', { text: 'Nikto taký.' })
+        : vyber.slice(0, 40).map((s) =>
+          el('button.item', {
+            onclick: () => {
+              setAttendance(session.id, s.id, true);
+              close();
+              toast(`${s.name} doplnený ako prítomný`);
+              after?.();
+            },
+          },
+            el('span.grow', {},
+              el('div.item__title', {}, s.name,
+                s.active ? null : el('span.tag', { text: 'neaktívny', style: { marginLeft: '8px' } })),
+              el('div.item__sub', { text: studentsOfGroup(session.groupId).some((x) => x.id === s.id)
+                ? groupName(session.groupId)
+                : studentGroupNames(s).join(' + ') || 'bez skupiny' }),
+            ),
+            el('span.chev', { text: '›' }),
+          ),
+        ));
+    };
+    vykresli();
+
+    mount(body,
+      el('p.small.muted', { style: { margin: 0 },
+        text: 'Žiak sa pridá ako prítomný, potom sa dá prepnúť ťuknutím ako pri ostatných.' }),
+      hladaj,
+      zoznam,
+    );
+  });
+}
+
 function editTimesSheet(session, navrhovanyKoniec = null) {
   sheet('Upraviť tréning', (body, close) => {
     const date = el('input.input', { type: 'date', value: session.date });

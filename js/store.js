@@ -490,6 +490,43 @@ export function sessionsInRange(from, to, { trainerId, groupId } = {}) {
 
 export const attendanceOfSession = (sessionId) => db.attendance.filter((a) => a.sessionId === sessionId);
 
+/**
+ * Kto patrí do hárku dochádzky konkrétneho tréningu.
+ *
+ * Pri prebiehajúcom tréningu: aktuálna skupina plus ktokoľvek už zapísaný —
+ * nech sa dá pridať aj žiak, ktorý práve dorazil.
+ * Pri ukončenom tréningu: presne tí, čo sú v ňom zapísaní. Skupina sa totiž
+ * časom mení a starý tréning musí ukazovať, kto na ňom naozaj bol — nie
+ * to, kto je v skupine dnes.
+ */
+export function sessionRoster(session) {
+  if (!session) return [];
+  const zapisaneIds = new Set(
+    db.attendance.filter((a) => a.sessionId === session.id).map((a) => a.studentId),
+  );
+  const zoznam = [...zapisaneIds].map(studentById).filter(Boolean);
+
+  if (!session.endTime) {
+    for (const s of studentsOfGroup(session.groupId)) {
+      if (!zapisaneIds.has(s.id)) zoznam.push(s);
+    }
+  }
+  return zoznam.sort((a, b) => a.name.localeCompare(b.name, 'sk'));
+}
+
+/** Koho sa dá do hárku ešte doplniť — žiaci klubu, ktorí v ňom zatiaľ nie sú. */
+export function pridatelniDoTreningu(session) {
+  const uzTam = new Set(sessionRoster(session).map((s) => s.id));
+  const zoSkupiny = [];
+  const ostatni = [];
+  for (const s of allStudents({ includeInactive: true })) {
+    if (uzTam.has(s.id)) continue;
+    (isInGroup(s, session.groupId) ? zoSkupiny : ostatni).push(s);
+  }
+  const podlaMena = (a, b) => a.name.localeCompare(b.name, 'sk');
+  return [...zoSkupiny.sort(podlaMena), ...ostatni.sort(podlaMena)];
+}
+
 export function durationMinutes(session) {
   if (!session.endTime) return 0;
   const [h1, m1] = session.startTime.split(':').map(Number);
