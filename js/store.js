@@ -702,6 +702,30 @@ export function updateStudent(student) {
   saveNow();
 }
 
+/**
+ * Zabudnutie osobných údajov žiaka, ktorý už do klubu nechodí.
+ * Zmazať ho celého by vzalo aj históriu tréningov a vybraté peniaze,
+ * ktoré klub potrebuje na vyúčtovanie. Preto mu odoberieme meno a kontakt
+ * a záznamy ostanú ako anonymné čiarky v štatistike.
+ */
+export function anonymizovatZiaka(studentId) {
+  const s = studentById(studentId);
+  if (!s) return null;
+  const skratka = initialsOf(s.name) || '—';
+  Object.assign(s, {
+    name: `Bývalý žiak ${skratka}`,
+    contactName: '', contactPhone: '', contactEmail: '', note: '',
+    active: false, anonymized: true,
+  });
+  sync.up('students', s);
+  // s menom ide preč aj ohlásená neúčasť — tá nesie dôvod, teda citlivý údaj
+  const ids = absencie().filter((a) => a.studentId === studentId).map((a) => a.id);
+  db.absences = db.absences.filter((a) => a.studentId !== studentId);
+  sync.delMany('absences', ids);
+  saveNow();
+  return s;
+}
+
 export function deleteStudent(studentId) {
   const attIds = db.attendance.filter((a) => a.studentId === studentId).map((a) => a.id);
   db.students = db.students.filter((s) => s.id !== studentId);

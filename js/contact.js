@@ -80,6 +80,38 @@ export function contactSheet(student, { title = 'Ozvať sa rodičovi', subject =
 
 const podpis = (trener, klub) => `Dobrý deň, tu ${trener} — ${klub}.`;
 
+/**
+ * Informácia pre rodičov o tom, čo klub o dieťati eviduje. Nie je to súhlas —
+ * na bežnú klubovú evidenciu ho netreba, právnym základom je členstvo v klube.
+ * Je to splnenie povinnosti rodiča informovať. Text si pred prvým použitím
+ * prejdite a doplňte, čo je vo vašom klube inak.
+ */
+export const textPreRodicov = ({ klub, kontakt = '', roky = 3 }) =>
+  `INFORMÁCIA O SPRACÚVANÍ OSOBNÝCH ÚDAJOV\n`
+  + `${klub}\n\n`
+  + `Čo o dieťati vedieme:\n`
+  + `• meno a priezvisko, dátum nástupu do klubu, tréningová skupina\n`
+  + `• kontakt na zákonného zástupcu (meno, telefón, e-mail)\n`
+  + `• dochádzku na tréningoch a úhrady za odtrénované hodiny\n`
+  + `• výsledky na turnajoch a v súťažiach, ktoré dieťa odohrá za klub\n\n`
+  + `Prečo to vedieme:\n`
+  + `Aby sme vedeli viesť tréningovú činnosť, vyúčtovať úhrady, prihlasovať\n`
+  + `deti na súťaže, ozvať sa vám a preukázať činnosť klubu (napr. pri dotáciách).\n`
+  + `Právnym základom je členský vzťah dieťaťa v klube a naše oprávnené záujmy\n`
+  + `pri jeho vedení. O súhlas vás preto nežiadame — ak by sme chceli údaje\n`
+  + `použiť inak (napríklad zverejniť fotografiu), spýtame sa osobitne.\n\n`
+  + `Kto sa k tomu dostane:\n`
+  + `Iba tréneri klubu. Údaje sú v aplikácii chránenej prihlásením a neposielame\n`
+  + `ich nikomu ďalšiemu. Výnimkou sú prihlášky na súťaže, kde meno a rok\n`
+  + `narodenia potrebuje organizátor a šachový zväz.\n\n`
+  + `Ako dlho:\n`
+  + `Počas členstva a ${roky} roky po jeho ukončení. Potom osobné údaje mažeme;\n`
+  + `zostávajú len súhrnné štatistiky bez mena.\n\n`
+  + `Vaše práva:\n`
+  + `Môžete si vyžiadať, aké údaje o dieťati vedieme, dať ich opraviť alebo\n`
+  + `vymazať, prípadne namietať proti ich spracúvaniu. Stačí sa ozvať`
+  + `${kontakt ? ` na ${kontakt}` : ' trénerovi'}.\n`;
+
 export const textVymeskavanie = (student, klub, trener) =>
   `${podpis(trener, klub)} `
   + `${student.name.split(' ')[0]} nám v poslednom čase na tréningoch chýba — je všetko v poriadku? `

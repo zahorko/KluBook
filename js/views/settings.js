@@ -17,6 +17,7 @@ import {
   state as syncState, onSyncChange, resetSyncState, retryFailed, clearFailed, clearSchemaWarning,
 } from '../sync.js';
 import { go, refresh } from '../router.js';
+import { textPreRodicov } from '../contact.js';
 
 export function renderSettings(root, trainer) {
   mount(root, el('div.stack-lg', {},
@@ -26,6 +27,7 @@ export function renderSettings(root, trainer) {
     scheduleCard(),
     gamifikaciaCard(),
     scoringCard(),
+    rodiciaCard(),
     clubCard(),
     dataCard(),
     versionLine(),
@@ -747,6 +749,61 @@ function novyTrenerSheet() {
       el('p.tiny.faint', { style: { margin: '-4px 2px 0' }, text: 'Aspoň 8 znakov. Pokojne nechajte navrhnuté.' }),
       stav,
       uloz,
+    );
+  });
+}
+
+
+/**
+ * Informácia pre rodičov. Súhlas na bežnú klubovú evidenciu netreba —
+ * ale informovať rodičov áno, a to sa robí raz pri prihláške.
+ */
+function rodiciaCard() {
+  const text = () => textPreRodicov({
+    klub: db.settings.clubName,
+    kontakt: session()?.user?.email ?? '',
+  });
+
+  return el('div', {},
+    el('h2.section-title', { text: 'Informácia pre rodičov' }),
+    el('div.card.stack', {},
+      el('p.small.muted', { style: { margin: 0 },
+        text: 'Čo klub o dieťati eviduje a prečo. Dajte to rodičom pri prihláške — '
+          + 'informovať ich musíte aj vtedy, keď súhlas nepotrebujete.' }),
+      el('button.btn.btn--block', { text: '📄 Zobraziť text', onclick: () => rodiciaSheet(text()) }),
+      el('p.tiny.faint', { style: { margin: 0 },
+        text: 'Text je pripravený na bežný šachový krúžok. Pred prvým použitím si ho prejdite '
+          + 'a doplňte, čo máte inak. Nie je to právne poradenstvo.' }),
+    ),
+  );
+}
+
+function rodiciaSheet(text) {
+  sheet('Informácia pre rodičov', (body, close) => {
+    const pole = el('textarea.textarea', { style: { minHeight: '260px', fontSize: '13px' } }, text);
+    mount(body,
+      el('p.small.muted', { style: { margin: 0 }, text: 'Môžete si ho tu upraviť a potom skopírovať alebo poslať.' }),
+      pole,
+      el('button.btn.btn--block', {
+        text: '📋 Skopírovať',
+        onclick: async () => {
+          try {
+            await navigator.clipboard.writeText(pole.value);
+            toast('Skopírované — vložte do e-mailu alebo dokumentu');
+          } catch {
+            pole.select();
+            toast('Označené — skopírujte klávesmi');
+          }
+        },
+      }),
+      el('button.btn.btn--ghost.btn--block', {
+        text: '⤓ Uložiť ako súbor',
+        onclick: () => {
+          downloadFile(`informacia-pre-rodicov-${todayISO()}.txt`, pole.value, 'text/plain');
+          toast('Stiahnuté');
+        },
+      }),
+      el('button.btn.btn--ghost.btn--block', { text: 'Zavrieť', onclick: close }),
     );
   });
 }

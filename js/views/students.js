@@ -9,7 +9,7 @@ import {
   db, sortedGroups, groupName, studentsOfGroup, upsertStudent, deleteStudent, studentById,
   todayISO, periodOf, updateStudent,
   studentFee, hasOwnFee, ucetZiaka, platbyZiaka, toggleTrainingPaid,
-  ospravedlnit, zrusitOspravedlnenie, absencie,
+  ospravedlnit, zrusitOspravedlnenie, absencie, anonymizovatZiaka,
   absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer, trainsWithClub, everyone,
   studentGroupIds, studentGroupNames, durationMinutes,
   studentEvents, studentPointsSummary, studentEventsOutsideSeason, seasonRange, DRUHY_PODUJATI,
@@ -490,11 +490,28 @@ export function renderStudentDetail(root, studentId) {
         ),
     ),
 
+    // Anonymizácia je to, čo väčšinou naozaj chcete: osobné údaje preč,
+    // ale odtrénované hodiny a vybraté peniaze ostanú vo vyúčtovaní klubu.
+    s.anonymized ? null : el('button.btn.btn--ghost.btn--block', {
+      text: '🕶 Zabudnúť osobné údaje',
+      onclick: async () => {
+        const ok = await confirmSheet('Zabudnúť osobné údaje?',
+          `${s.name} príde o meno, kontakt aj poznámky a stane sa z neho anonymný záznam. `
+          + 'Dochádzka a vybraté peniaze ostanú, aby vyúčtovanie klubu sedelo. Nedá sa to vrátiť.',
+          { danger: true, okLabel: 'Zabudnúť' });
+        if (!ok) return;
+        anonymizovatZiaka(s.id);
+        toast('Osobné údaje zabudnuté');
+        go('/ziaci');
+      },
+    }),
+
     el('button.btn.btn--danger.btn--block', {
       text: 'Vymazať žiaka',
       onclick: async () => {
         const ok = await confirmSheet('Vymazať žiaka?',
-          `${s.name} sa vymaže vrátane dochádzky a platieb. Ak chcete zachovať históriu, použite radšej „Deaktivovať".`,
+          `${s.name} sa vymaže vrátane dochádzky a platieb. Ak chcete zachovať vyúčtovanie, `
+          + 'použite radšej „Zabudnúť osobné údaje".',
           { danger: true, okLabel: 'Vymazať' });
         if (!ok) return;
         deleteStudent(s.id);
