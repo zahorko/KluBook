@@ -95,7 +95,7 @@ a { color: var(--terracotta); }
 /* ---------- bottom nav ---------- */
 .nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   background: color-mix(in srgb, var(--cream-deep) 94%, transparent);
   backdrop-filter: saturate(1.4) blur(14px);
   border-top: 1px solid var(--cream-line);
@@ -104,10 +104,12 @@ a { color: var(--terracotta); }
 .nav__item {
   appearance: none; border: 0; background: none; cursor: pointer;
   display: grid; justify-items: center; gap: 3px;
-  padding: 9px 2px 8px; height: var(--nav-h);
-  color: var(--ink-soft); font-size: 10.5px; font-weight: 500;
+  padding: 9px 1px 8px; height: var(--nav-h);
+  color: var(--ink-soft); font-size: 9.5px; font-weight: 500;
+  /* šesť záložiek sa musí zmestiť do jedného riadku aj na úzkom telefóne */
+  min-width: 0; white-space: nowrap; letter-spacing: -.01em;
 }
-.nav__icon { font-size: 19px; line-height: 1; }
+.nav__icon { font-size: 18px; line-height: 1; }
 .nav__item[aria-current="page"] { color: var(--terracotta-d); }
 .nav__item[aria-current="page"] .nav__icon { transform: translateY(-1px); }
 
@@ -393,5 +395,5 @@ table.data th:first-child, table.data td:first-child {
   }
 }
 @media (min-width: 900px) {
-  .nav { grid-template-columns: repeat(5, minmax(0, 120px)); justify-content: center; }
+  .nav { grid-template-columns: repeat(6, minmax(0, 110px)); justify-content: center; }
 }

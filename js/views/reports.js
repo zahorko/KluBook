@@ -10,7 +10,6 @@ import {
   periodsUpToNow, primaryGroupId, allStudents, studentGroupNames,
 } from '../store.js';
 import { refresh } from '../router.js';
-import { renderPoints } from './points.js';
 
 const uiState = { tab: 'treneri', range: '30' };
 
@@ -26,7 +25,7 @@ export function renderReports(root) {
   const to = todayISO();
 
   const tabs = el('div.pillbar', {},
-    [['treneri', 'Tréneri'], ['ziaci', 'Žiaci'], ['platby', 'Platby'], ['body', 'Rebríček']].map(([id, label]) =>
+    [['treneri', 'Tréneri'], ['ziaci', 'Žiaci'], ['platby', 'Platby']].map(([id, label]) =>
       el('button.pill', {
         text: label,
         'aria-pressed': String(uiState.tab === id),
@@ -48,10 +47,9 @@ export function renderReports(root) {
   const body = el('div');
   if (uiState.tab === 'treneri') body.append(trainersReport(from, to));
   else if (uiState.tab === 'ziaci') body.append(studentsReport(from, to));
-  else if (uiState.tab === 'body') renderPoints(body);
   else body.append(paymentsReport());
 
-  const bezObdobia = uiState.tab === 'platby' || uiState.tab === 'body';
+  const bezObdobia = uiState.tab === 'platby';
   mount(root, el('div.stack-lg', {}, tabs, bezObdobia ? null : ranges, body));
 }
 

@@ -1,17 +1,17 @@
 /* =========================================================
-   Bodovanie — klubový rebríček za hranie líg a turnajov
+   Podujatia — ligy, turnaje a zápis výsledkov
    ---------------------------------------------------------
-   Zámer: motivovať k hraniu. Preto sa body sčítavajú za celú
-   sezónu bez stropu — kto hrá viac, má viac. Účasť je bodovaná
-   sama osebe, aby mal zmysel ísť hrať aj slabší hráč.
+   Odtiaľto tečie väčšina XP. Zámer: motivovať k hraniu, preto sa
+   XP sčítava bez stropu a účasť je odmenená sama osebe — nech má
+   zmysel ísť hrať aj slabší hráč. Samotný rebríček žije
+   v rebricek.js, tu sa len zapisuje, kto ako dopadol.
    ========================================================= */
 import {
   el, mount, toast, sheet, confirmSheet, field, textInput, selectInput,
-  fmtDate, fmtDayShort, downloadCSV,
+  fmtDate, fmtDayShort,
 } from '../ui.js';
 import {
-  db, sortedGroups, groupName, studentById, everyone, trainsWithClub,
-  seasonRange, eventsInRange, leaderboard, eventById, resultsOfEvent,
+  db, groupName, studentById, everyone, trainsWithClub, eventById, resultsOfEvent,
   upsertEvent, deleteEvent, setEventResult, removeEventResult,
   scoringRules, DRUHY_PODUJATI, todayISO, updateSettings, isInGroup,
 } from '../store.js';
@@ -19,88 +19,7 @@ import { go, refresh } from '../router.js';
 
 const uiState = { groupId: null };
 
-/* ---------------- rebríček ---------------- */
-export function renderPoints(root) {
-  const { from, to } = seasonRange();
-  const podujatia = eventsInRange(from, to);
-  const tabulka = leaderboard({ from, to, groupId: uiState.groupId });
-  const vsetciBody = leaderboard({ from, to });
-
-  mount(root, el('div.stack-lg', {},
-    seasonCard(from, to, podujatia, vsetciBody),
-    filterBar(),
-    tabulka.length === 0
-      ? el('div.empty', {},
-        el('span.empty__mark', { text: '🏆' }),
-        podujatia.length
-          ? 'V tomto filtri zatiaľ nikto nemá body.'
-          : 'Zatiaľ žiadne podujatia. Pridajte prvé tlačidlom nižšie a zapíšte, kto hral.')
-      : leaderboardTable(tabulka),
-    eventsSection(podujatia),
-  ));
-}
-
-function seasonCard(from, to, podujatia, tabulka) {
-  const spolu = tabulka.reduce((s, r) => s + r.points, 0);
-  return el('div.card.card--warm.stack', {},
-    el('div.row.row--between', {},
-      el('div', {},
-        el('h2', { text: 'Sezóna', style: { fontSize: '18px' } }),
-        el('div.small.muted', { text: `${fmtDate(from)} – ${fmtDate(to)}` }),
-      ),
-      el('button.btn.btn--ghost.btn--sm', { text: 'Zmeniť', onclick: () => seasonSheet(from, to) }),
-    ),
-    el('div.stats', {},
-      el('div.stat', {}, el('div.stat__num', { text: String(podujatia.length) }), el('div.stat__lab', { text: 'podujatí' })),
-      el('div.stat', {}, el('div.stat__num', { text: String(tabulka.length) }), el('div.stat__lab', { text: 'hráčov' })),
-      el('div.stat', {}, el('div.stat__num', { text: String(Math.round(spolu)) }), el('div.stat__lab', { text: 'bodov spolu' })),
-    ),
-  );
-}
-
-function filterBar() {
-  const pill = (label, value) => el('button.pill', {
-    text: label,
-    'aria-pressed': String(uiState.groupId === value),
-    onclick: () => { uiState.groupId = value; refresh(); },
-  });
-  return el('div.pillbar', {},
-    pill('Všetci', null),
-    sortedGroups().map((g) => pill(g.name, g.id)),
-  );
-}
-
-function leaderboardTable(tabulka) {
-  const medaila = (i) => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`);
-
-  return el('div.card.card--flush.list', {},
-    tabulka.map((r, i) =>
-      el('button.item', { onclick: () => go(`/ziaci/${r.student.id}`) },
-        el('span', {
-          style: {
-            minWidth: '30px', textAlign: 'center', fontWeight: '600',
-            fontSize: i < 3 ? '18px' : '14px', color: i < 3 ? 'inherit' : 'var(--ink-faint)',
-          },
-          text: medaila(i),
-        }),
-        el('span.grow', {},
-          el('div.item__title', {}, r.student.name,
-            trainsWithClub(r.student) ? null : el('span.tag', { text: 'netrénuje', style: { marginLeft: '8px' } })),
-          el('div.item__sub', {
-            text: `${r.events} ${r.events === 1 ? 'podujatie' : r.events < 5 ? 'podujatia' : 'podujatí'}`
-              + (r.games ? ` · ${r.wins}/${r.draws}/${r.losses} (V/R/P)` : ''),
-          }),
-        ),
-        el('span', { style: { textAlign: 'right' } },
-          el('div', { class: 'mono', style: { fontWeight: '700', fontSize: '17px' }, text: String(Math.round(r.points * 100) / 100) }),
-          el('div.item__sub', { text: 'bodov' }),
-        ),
-      ),
-    ),
-  );
-}
-
-function eventsSection(podujatia) {
+export function eventsSection(podujatia) {
   return el('div', {},
     el('div.row.row--between', { style: { alignItems: 'baseline' } },
       el('h2.section-title', { text: 'Podujatia' }),
@@ -238,7 +157,7 @@ function hracRiadok(event, v, paint) {
           text: v.placement ? `${v.placement}. miesto` : (v.wins + v.draws + v.losses ? 'zapísané' : 'len účasť'),
         }),
       ),
-      el('span.mono', { style: { fontWeight: '700', fontSize: '16px' }, text: `${v.points} b` }),
+      el('span.mono', { style: { fontWeight: '700', fontSize: '16px' }, text: `${v.points} XP` }),
       el('button.iconbtn', {
         text: '✕', title: 'Odobrať z podujatia',
         onclick: async () => {
@@ -366,7 +285,7 @@ function addPlayersSheet(event, hotovo) {
   });
 }
 
-function seasonSheet(from, to) {
+export function seasonSheet(from, to) {
   sheet('Sezóna', (body, close) => {
     const od = el('input.input', { type: 'date', value: from });
     const doo = el('input.input', { type: 'date', value: to });
@@ -389,19 +308,6 @@ function seasonSheet(from, to) {
   });
 }
 
-function exportLeaderboard() {
-  const { from, to } = seasonRange();
-  const rows = [['Poradie', 'Hráč', 'Skupiny', 'Body', 'Podujatí', 'Výhry', 'Remízy', 'Prehry']];
-  leaderboard({ from, to }).forEach((r, i) => {
-    rows.push([
-      i + 1, r.student.name,
-      trainsWithClub(r.student) ? (r.student.groupIds ?? []).map(groupName).join(' + ') : 'netrénuje',
-      r.points, r.events, r.wins, r.draws, r.losses,
-    ]);
-  });
-  downloadCSV(`rebricek-${from}_${to}.csv`, rows);
-  toast('CSV stiahnuté');
-}
 
 void isInGroup;
 void db;

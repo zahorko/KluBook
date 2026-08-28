@@ -12,6 +12,7 @@ import {
   absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer, trainsWithClub, everyone,
   studentGroupIds, studentGroupNames, durationMinutes,
   studentEvents, studentPointsSummary, studentEventsOutsideSeason, seasonRange, DRUHY_PODUJATI,
+  hracskyProfil, gamifikacia, shopItems, kupit, purchasesOfStudent, zrusitNakup,
 } from '../store.js';
 import { go, refresh } from '../router.js';
 import { contactSheet, telHref, maKontakt, textVymeskavanie } from '../contact.js';
@@ -111,6 +112,127 @@ export function renderStudents(root) {
       onclick: () => studentSheet(null, uiState.groupId),
     }),
   ));
+}
+
+
+/**
+ * Level, XP a goldy jedného hráča. Toto je to, čo dieťaťu naozaj ukazujete —
+ * nie celé poradie klubu, ale jeho vlastný postup a najbližší cieľ.
+ */
+function gamifikaciaSekcia(s) {
+  const p = hracskyProfil(s.id);
+  if (!p) return null;
+  const g = gamifikacia();
+
+  const pruh = el('div.bar', { style: { marginTop: '10px' } },
+    el('div.bar__fill.bar__fill--good', { style: { width: `${p.postup}%` } }));
+
+  return el('div', {},
+    el('h2.section-title', { text: 'Level a goldy' }),
+    el('div.card.stack', {},
+      el('div.row.row--between', { style: { alignItems: 'baseline' } },
+        el('div', {},
+          el('div', { style: { fontSize: '26px', fontWeight: '700' }, text: `Level ${p.level}` }),
+          el('div.small.muted', { text: `${p.poradie}. v klube tejto sezóny` }),
+        ),
+        el('div', { style: { textAlign: 'right' } },
+          el('div.mono', {
+            // mínus môže vzniknúť len po znížení pravidiel — nech to nezapadne
+            style: { fontSize: '22px', fontWeight: '700', color: p.gold < 0 ? 'var(--red)' : 'inherit' },
+            text: `${p.gold} 💰`,
+          }),
+          el('div.item__sub', { text: p.gold < 0 ? 'v mínuse' : 'na účte' }),
+        ),
+      ),
+      pruh,
+      el('div.row.row--between', {},
+        el('span.tiny.faint', { text: `${p.celkovo.xp} XP celkovo · ${p.sezona.xp} XP tejto sezóny` }),
+        el('span.tiny.faint', {
+          text: p.maxDosiahnuty ? 'najvyšší level' : `do levelu ${p.level + 1} chýba ${p.chyba} XP`,
+        }),
+      ),
+      el('div.stats', { style: { marginTop: '4px' } },
+        el('div.stat', {}, el('div.stat__num', { text: String(p.sezona.treningy) }),
+          el('div.stat__lab', { text: `tréningov · ${g.xpZaTrening} XP` })),
+        el('div.stat', {}, el('div.stat__num', { text: String(p.sezona.podujatia) }),
+          el('div.stat__lab', { text: 'podujatí' })),
+
+        el('div.stat', {}, el('div.stat__num', { text: String(p.goldZarobene) }),
+          el('div.stat__lab', { text: 'goldov zarobených' })),
+      ),
+      el('button.btn.btn--block', {
+        text: '💰 Vybrať odmenu z obchodu',
+        onclick: () => obchodSheet(s, p),
+      }),
+    ),
+    nakupySekcia(s),
+  );
+}
+
+/** Čo si dieťa doteraz vybralo — a či to už dostalo do ruky. */
+function nakupySekcia(s) {
+  const nakupy = purchasesOfStudent(s.id);
+  if (!nakupy.length) return null;
+  return el('div.card.card--flush.list', { style: { marginTop: '10px' } },
+    nakupy.map((n) =>
+      el('div.item', {},
+        el('span.grow', {},
+          el('div.item__title', { text: n.itemName }),
+          el('div.item__sub', { text: `${fmtDate(String(n.at).slice(0, 10))} · ${n.price} 💰`
+            + (n.delivered ? ' · odovzdané' : ' · čaká na odovzdanie') }),
+        ),
+        el('button.iconbtn', {
+          text: '↩',
+          title: 'Zrušiť nákup a vrátiť goldy',
+          onclick: async () => {
+            const ok = await confirmSheet('Zrušiť nákup?',
+              `${n.itemName} sa vymaže z histórie a ${n.price} goldov sa vráti na účet.`,
+              { danger: true, okLabel: 'Zrušiť nákup' });
+            if (!ok) return;
+            zrusitNakup(n.id);
+            toast('Nákup zrušený, goldy vrátené');
+            refresh();
+          },
+        }),
+      ),
+    ),
+  );
+}
+
+function obchodSheet(s, profil) {
+  sheet(`Obchod — ${s.name}`, (body, close) => {
+    const ponuka = shopItems();
+    mount(body,
+      el('div.row.row--between', {},
+        el('span.small.muted', { text: 'Zostatok na účte' }),
+        el('span.mono', { style: { fontWeight: '700', fontSize: '17px' }, text: `${profil.gold} 💰` }),
+      ),
+      ponuka.length === 0
+        ? el('div.empty', { text: 'Ponuka je zatiaľ prázdna. Odmeny pridáte v Rebríčku → Obchod.' })
+        : el('div.card.card--flush.list', {}, ponuka.map((i) => {
+          const maNa = profil.gold >= i.price;
+          return el(maNa ? 'button.item' : 'div.item', {
+            style: maNa ? {} : { opacity: '.45' },
+            onclick: maNa ? () => {
+              try {
+                kupit(s.id, i.id);
+                close();
+                toast(`${i.name} za ${i.price} 💰`);
+                refresh();
+              } catch (e) { toast(e.message); }
+            } : undefined,
+          },
+            el('span', { style: { fontSize: '18px', minWidth: '26px', textAlign: 'center' },
+              text: i.kind === 'vyhoda' ? '⭐' : '🎁' }),
+            el('span.grow', {},
+              el('div.item__title', { text: i.name }),
+              el('div.item__sub', { text: i.description || '' }),
+            ),
+            el('span.mono', { style: { fontWeight: '700' }, text: `${i.price} 💰` }),
+          );
+        })),
+    );
+  });
 }
 
 /* ---------------- detail žiaka ---------------- */
@@ -229,6 +351,7 @@ export function renderStudentDetail(root, studentId) {
         : null,
     ),
 
+    gamifikaciaSekcia(s),
     eventsSection(s),
 
     trainsWithClub(s)
@@ -398,13 +521,13 @@ function eventsSection(s) {
 
   return el('div', {},
     el('div.row.row--between', { style: { alignItems: 'baseline' } },
-      el('h2.section-title', { text: 'Podujatia a body' }),
+      el('h2.section-title', { text: 'Podujatia' }),
       el('span.tiny.faint', { style: { marginTop: '14px' }, text: `sezóna ${fmtDate(from)} – ${fmtDate(to)}` }),
     ),
 
     el('div.stats', {},
       el('div.stat', {}, el('div.stat__num', { text: String(suhrn.events) }), el('div.stat__lab', { text: 'podujatí' })),
-      el('div.stat', {}, el('div.stat__num', { text: String(suhrn.points) }), el('div.stat__lab', { text: 'bodov' })),
+      el('div.stat', {}, el('div.stat__num', { text: String(suhrn.points) }), el('div.stat__lab', { text: 'XP z podujatí' })),
       el('div.stat', {},
         el('div.stat__num', { text: `${suhrn.wins}/${suhrn.draws}/${suhrn.losses}` }),
         el('div.stat__lab', { text: 'výhry/remízy/prehry' })),
@@ -425,7 +548,7 @@ function eventsSection(s) {
               el('div.item__sub', { style: { color: 'var(--ink-soft)' }, text: popisVysledku(result) }),
             ),
             el('span', { style: { textAlign: 'right' } },
-              el('div.mono', { style: { fontWeight: '700' }, text: `${result.points} b` }),
+              el('div.mono', { style: { fontWeight: '700' }, text: `${result.points} XP` }),
             ),
             el('span.chev', { text: '›' }),
           ),

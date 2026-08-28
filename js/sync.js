@@ -128,24 +128,51 @@ const MAPPERS = {
       points: Number(r.points) || 0, note: r.note || '',
     }),
   },
+  shop_items: {
+    toRow: (i) => ({
+      id: i.id, name: i.name, description: i.description || '',
+      price: Number(i.price) || 0, kind: i.kind || 'vec',
+      active: i.active !== false, ord: Number(i.ord) || 0,
+    }),
+    fromRow: (r) => ({
+      id: r.id, name: r.name, description: r.description || '',
+      price: Number(r.price) || 0, kind: r.kind || 'vec',
+      active: r.active !== false, ord: Number(r.ord) || 0, createdAt: r.created_at,
+    }),
+  },
+  purchases: {
+    toRow: (n) => ({
+      id: n.id, student_id: n.studentId, item_id: n.itemId ?? null,
+      item_name: n.itemName || '', price: Number(n.price) || 0,
+      at: n.at, delivered: Boolean(n.delivered), note: n.note || '',
+    }),
+    fromRow: (r) => ({
+      id: r.id, studentId: r.student_id, itemId: r.item_id ?? null,
+      itemName: r.item_name || '', price: Number(r.price) || 0,
+      at: r.at, delivered: Boolean(r.delivered), note: r.note || '',
+    }),
+  },
   club_settings: {
     toRow: (s) => ({
       id: 1, club_name: s.clubName, short_name: s.shortName, motto: s.motto,
       fee: s.fee, tracking_since: s.trackingSince ?? null,
       scoring: s.scoring ?? null,
+      gamification: s.gamification ?? null,
       season_start: s.seasonStart ?? null, season_end: s.seasonEnd ?? null,
     }),
     fromRow: (r) => ({
       clubName: r.club_name, shortName: r.short_name, motto: r.motto,
       fee: Number(r.fee), trackingSince: r.tracking_since ?? null,
       scoring: r.scoring ?? null,
+      gamification: r.gamification ?? null,
       seasonStart: r.season_start ?? null, seasonEnd: r.season_end ?? null,
     }),
   },
 };
 
 /* Poradie zápisu rešpektuje väzby (tréning musí existovať pred dochádzkou). */
-const PUSH_ORDER = ['club_settings', 'trainers', 'groups', 'schedule', 'students', 'sessions', 'attendance', 'payments', 'events', 'event_results'];
+const PUSH_ORDER = ['club_settings', 'trainers', 'groups', 'schedule', 'students', 'sessions',
+  'attendance', 'payments', 'events', 'event_results', 'shop_items', 'purchases'];
 
 /* Tabuľky, kde záznam poznáme aj podľa inej dvojice stĺpcov než id —
    keby dvaja tréneri zapísali to isté z dvoch zariadení. */
@@ -429,7 +456,7 @@ export async function pull() {
   emit();
   try {
     const [trainers, groups, students, sessions, attendance, payments, settings, schedule,
-      events, eventResults] = await Promise.all([
+      events, eventResults, shopItems, purchases] = await Promise.all([
       selectAll('trainers'),
       selectAll('groups'),
       selectAll('students'),
@@ -447,6 +474,12 @@ export async function pull() {
         return [];
       }),
       selectAll('event_results').catch(() => []),
+      // obchod je najnovšia tabuľka — bez nej appka beží ďalej
+      selectAll('shop_items').catch(() => {
+        state.lastError = 'Klubový obchod zatiaľ nie je v databáze — spustite sql/09-gamifikacia.sql.';
+        return [];
+      }),
+      selectAll('purchases').catch(() => []),
     ]);
 
     const map = (table, rows) => (rows ?? []).map(MAPPERS[table].fromRow);
@@ -460,6 +493,8 @@ export async function pull() {
       schedule: map('schedule', schedule),
       events: map('events', events),
       eventResults: map('event_results', eventResults),
+      shopItems: map('shop_items', shopItems),
+      purchases: map('purchases', purchases),
       settings: settings?.[0] ? MAPPERS.club_settings.fromRow(settings[0]) : null,
     };
 

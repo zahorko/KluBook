@@ -15,10 +15,12 @@ import { renderPayments } from './views/payments.js';
 import { renderReports } from './views/reports.js';
 import { renderSettings } from './views/settings.js';
 import { renderEvent } from './views/points.js';
+import { renderRebricek } from './views/rebricek.js';
 
 const TABS = [
   { path: 'trening', label: 'Tréning', icon: '♟' },
   { path: 'ziaci', label: 'Žiaci', icon: '👥' },
+  { path: 'rebricek', label: 'Rebríček', icon: '🏆' },
   { path: 'platby', label: 'Platby', icon: '€' },
   { path: 'prehlady', label: 'Prehľady', icon: '📊' },
   { path: 'nastavenia', label: 'Viac', icon: '⚙' },
@@ -28,6 +30,7 @@ const TITLES = {
   trening: 'Tréning',
   ziaci: 'Žiaci',
   platby: 'Platby',
+  rebricek: 'Rebríček',
   prehlady: 'Prehľady',
   nastavenia: 'Nastavenia',
   podujatie: 'Podujatie',
@@ -77,6 +80,9 @@ function render() {
       break;
     case 'platby':
       renderPayments(content);
+      break;
+    case 'rebricek':
+      renderRebricek(content);
       break;
     case 'prehlady':
       renderReports(content);
@@ -167,7 +173,7 @@ function navbar(active) {
   return el('nav.nav', {},
     TABS.map((t) =>
       el('button.nav__item', {
-        'aria-current': t.path === active || (active === 'podujatie' && t.path === 'prehlady') ? 'page' : null,
+        'aria-current': t.path === active || (active === 'podujatie' && t.path === 'rebricek') ? 'page' : null,
         onclick: () => go(`/${t.path}`),
       },
         el('span.nav__icon', { text: t.icon }),

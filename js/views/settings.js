@@ -5,6 +5,7 @@ import { el, mount, toast, sheet, confirmSheet, field, textInput, selectInput, d
 import {
   db, isCloud, saveNow, logout, initialsOf, uid, newSalt, hashPin, setDemoPin,
   exportJSON, importJSON, importJSONToCloud, resetAll, clearDemoData, todayISO,
+  gamifikacia, updateGamifikacia, xpPreLevel,
   updateSettings, updateTrainer, applyServerData, syncNow,
   setDevicePin, hasDevicePin, devicePinEmail, lockApp,
   studentById, groupName, trackingSince,
@@ -23,6 +24,7 @@ export function renderSettings(root, trainer) {
     isCloud() ? syncCard() : null,
     trainersCard(),
     scheduleCard(),
+    gamifikaciaCard(),
     scoringCard(),
     clubCard(),
     dataCard(),
@@ -553,6 +555,51 @@ function scheduleSheet(zaznam) {
 }
 
 /* ---------------- bodovanie ---------------- */
+
+/** Nastavenie levelov a goldov. Čísla sú tu naschvál otvorené —
+    po prvej sezóne uvidíte, či deti postupujú príliš rýchlo alebo pomaly. */
+function gamifikaciaCard() {
+  const g = gamifikacia();
+
+  const cislo = (kluc, popis, krok = '1') => field(popis, el('input.input', {
+    type: 'number', step: krok, min: '0', value: g[kluc],
+    onchange: (e) => {
+      updateGamifikacia({ [kluc]: Math.max(0, Number(e.target.value) || 0) });
+      toast('Uložené');
+      refresh();
+    },
+  }));
+
+  // ukážka, čo tie čísla znamenajú — inak sú to len čísla
+  const ukazka = [2, 5, 10, 20].map((lvl) =>
+    el('div.row.row--between', {},
+      el('span.small', { text: `Level ${lvl}` }),
+      el('span.mono.small', { text: `${xpPreLevel(lvl)} XP` }),
+    ));
+
+  const tyzdnovXP = g.xpZaTrening * 2;
+
+  return el('div', {},
+    el('h2.section-title', { text: 'Levely a goldy' }),
+    el('div.card.stack', {},
+      el('p.small.muted', { style: { margin: 0 },
+        text: 'XP sa počíta z dochádzky a podujatí, nikde sa neukladá — po zmene týchto čísel sa všetko prepočíta samo. '
+          + 'Pozor pri znižovaní: komu tým ubudnú goldy, môže mať zostatok v mínuse, kým si to nedobehne. Nákupy sa nemažú.' }),
+      el('div.grid2', {}, cislo('xpZaTrening', 'XP za tréning'), cislo('goldZaLevel', 'Goldov za level up')),
+      el('div.grid2', {}, cislo('levelZaklad', 'XP na prvý level'), cislo('levelKrok', 'O koľko drahší každý ďalší')),
+      cislo('maxLevel', 'Najvyšší level'),
+      el('div', {},
+        el('div.field__label', { text: 'Ako to vyjde' }),
+        el('div.card.stack', { style: { background: 'var(--cream-deep)', borderColor: 'transparent', gap: '4px' } },
+          ...ukazka,
+          el('p.tiny.faint', { style: { margin: '6px 0 0' },
+            text: `Kto chodí dvakrát do týždňa a nikam nejde hrať, nazbiera ${tyzdnovXP} XP týždenne.` }),
+        ),
+      ),
+    ),
+  );
+}
+
 function scoringCard() {
   const pravidla = scoringRules();
 
@@ -576,10 +623,10 @@ function scoringCard() {
   }));
 
   return el('div', {},
-    el('h2.section-title', { text: 'Bodovanie za hranie' }),
+    el('h2.section-title', { text: 'XP za hranie' }),
     el('div.card.stack', {},
       el('p.small.muted', { style: { margin: 0 },
-        text: 'Koľko bodov dostane hráč za podujatie. Po zmene sa všetky doterajšie výsledky prepočítajú.' }),
+        text: 'Koľko XP dostane hráč za podujatie. Po zmene sa všetky doterajšie výsledky prepočítajú.' }),
 
       el('div', {},
         el('div.field__label', { text: `${DRUHY_PODUJATI.liga} — jedna partia` }),
@@ -591,7 +638,7 @@ function scoringCard() {
         el('div.field__label', { text: `${DRUHY_PODUJATI.turnaj} — viac partií za deň` }),
         el('div.grid2', {}, cislo('turnaj', 'ucast', 'Za účasť'), cislo('turnaj', 'vyhra', 'Za výhru')),
         el('div.grid2', {}, cislo('turnaj', 'remiza', 'Za remízu'), cislo('turnaj', 'prehra', 'Za prehru')),
-        el('div.field__label', { text: 'Bonus za umiestnenie', style: { marginTop: '10px' } }),
+        el('div.field__label', { text: 'Bonus XP za umiestnenie', style: { marginTop: '10px' } }),
         el('div.grid2', {}, umiestnenie(1), umiestnenie(2)),
         el('div.grid2', {}, umiestnenie(3), umiestnenie(4)),
       ),

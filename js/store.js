@@ -83,6 +83,8 @@ const emptyDb = () => ({
   schedule: [],
   events: [],
   eventResults: [],
+  shopItems: [],
+  purchases: [],
 });
 
 /* ---------- demo dáta ---------- */
@@ -180,6 +182,8 @@ function load() {
         parsed.schedule ??= [];
         parsed.events ??= [];
         parsed.eventResults ??= [];
+        parsed.shopItems ??= [];
+        parsed.purchases ??= [];
         return parsed;
       }
     } catch { /* poškodené dáta preskočíme */ }
@@ -294,6 +298,8 @@ export function applyServerData(data) {
   if (data.schedule) db.schedule = zluc('schedule', data.schedule);
   if (data.events) db.events = zluc('events', data.events);
   if (data.eventResults) db.eventResults = zluc('event_results', data.eventResults);
+  if (data.shopItems) db.shopItems = zluc('shop_items', data.shopItems);
+  if (data.purchases) db.purchases = zluc('purchases', data.purchases);
   if (data.settings) db.settings = { ...DEFAULT_SETTINGS, ...data.settings };
   db.demo = false;
   saveNow();
@@ -922,6 +928,245 @@ export function recomputeAllPoints() {
   return zmenene;
 }
 
+/* =========================================================
+   Gamifikácia — XP, levely, goldy a klubový obchod
+   ---------------------------------------------------------
+   XP a levely sa nikam neukladajú. Počítajú sa z podujatí a dochádzky,
+   ktoré appka aj tak eviduje — takže sa nemôžu rozísť s realitou a po
+   zmene pravidiel netreba nič prepočítavať.
+
+   Level rastie naprieč rokmi z celkových XP (cesta v klube).
+   Sezónne XP sa každý september vynulujú (preteky o tento rok).
+   ========================================================= */
+
+export const DEFAULT_GAMIFIKACIA = {
+  xpZaTrening: 20,     // za každú prítomnosť na tréningu
+  levelZaklad: 60,     // XP na prvý level up
+  levelKrok: 40,       // o koľko sa každý ďalší level predraží
+  maxLevel: 35,
+  goldZaLevel: 10,     // koľko goldov padne za jeden level up
+};
+
+export function gamifikacia() {
+  return { ...DEFAULT_GAMIFIKACIA, ...(db.settings.gamification ?? {}) };
+}
+
+export const updateGamifikacia = (patch) =>
+  updateSettings({ gamification: { ...gamifikacia(), ...patch } });
+
+/** Koľko XP treba na postup z daného levelu na ďalší. */
+export function xpNaDalsiLevel(level, g = gamifikacia()) {
+  return g.levelZaklad + g.levelKrok * (level - 1);
+}
+
+/** Koľko XP treba nazbierať dovedna, aby človek dosiahol daný level. */
+export function xpPreLevel(level, g = gamifikacia()) {
+  let spolu = 0;
+  for (let i = 1; i < level; i++) spolu += xpNaDalsiLevel(i, g);
+  return spolu;
+}
+
+/** Z celkových XP spraví level aj postup k ďalšiemu — pre ukazovateľ. */
+export function levelZoXp(xp, g = gamifikacia()) {
+  let level = 1;
+  let zaklad = 0;
+  while (level < g.maxLevel) {
+    const treba = xpNaDalsiLevel(level, g);
+    if (xp < zaklad + treba) break;
+    zaklad += treba;
+    level += 1;
+  }
+  const doDalsieho = level >= g.maxLevel ? 0 : xpNaDalsiLevel(level, g);
+  const vLeveli = xp - zaklad;
+  return {
+    level,
+    vLeveli,
+    doDalsieho,
+    chyba: Math.max(0, doDalsieho - vLeveli),
+    postup: doDalsieho ? Math.min(100, Math.round((vLeveli / doDalsieho) * 100)) : 100,
+    maxDosiahnuty: level >= g.maxLevel,
+  };
+}
+
+/**
+ * XP všetkých naraz. Jeden prechod cez dochádzku a výsledky —
+ * počítať to zvlášť pre každého žiaka by pri celej sezóne bolo pomalé.
+ */
+function xpTabulka({ from = null, to = null } = {}) {
+  const g = gamifikacia();
+  const vRozsahu = (d) => Boolean(d) && (!from || d >= from) && (!to || d <= to);
+  const datumTreningu = new Map(db.sessions.map((t) => [t.id, t.date]));
+  const datumPodujatia = new Map(db.events.map((e) => [e.id, e.date]));
+  const out = new Map();
+  const zaznam = (id) => {
+    if (!out.has(id)) {
+      out.set(id, {
+        studentId: id, xp: 0, xpZTreningov: 0, xpZPodujati: 0,
+        treningy: 0, podujatia: 0, vyhry: 0, remizy: 0, prehry: 0,
+      });
+    }
+    return out.get(id);
+  };
+
+  for (const a of db.attendance) {
+    if (!a.present || !vRozsahu(datumTreningu.get(a.sessionId))) continue;
+    zaznam(a.studentId).treningy += 1;
+  }
+  for (const r of db.eventResults) {
+    if (!vRozsahu(datumPodujatia.get(r.eventId))) continue;
+    const z = zaznam(r.studentId);
+    z.podujatia += 1;
+    z.xpZPodujati += Number(r.points) || 0;
+    z.vyhry += r.wins || 0;
+    z.remizy += r.draws || 0;
+    z.prehry += r.losses || 0;
+  }
+  for (const z of out.values()) {
+    z.xpZTreningov = z.treningy * g.xpZaTrening;
+    z.xp = Math.round(z.xpZTreningov + z.xpZPodujati);
+  }
+  return out;
+}
+
+const prazdnyZaznam = (studentId) => ({
+  studentId, xp: 0, xpZTreningov: 0, xpZPodujati: 0,
+  treningy: 0, podujatia: 0, vyhry: 0, remizy: 0, prehry: 0,
+});
+
+/** Koľko goldov kto minul — jeden prechod cez nákupy. */
+function minuteGoldy() {
+  const out = new Map();
+  for (const n of db.purchases ?? []) {
+    out.set(n.studentId, (out.get(n.studentId) ?? 0) + (Number(n.price) || 0));
+  }
+  return out;
+}
+
+/** Goldy sa sypú za level up — kto je na leveli 5, dostal ich štyrikrát. */
+export const goldZaLevel = (level, g = gamifikacia()) => Math.max(0, (level - 1) * g.goldZaLevel);
+
+/**
+ * Rebríček. `zoradenie` = 'sezona' (preteky o tento rok) alebo
+ * 'celkovo' (dlhodobá cesta v klube).
+ */
+export function rebricek({ groupId = null, obdobie = null, zoradenie = 'sezona' } = {}) {
+  const sezona = obdobie ?? seasonRange();
+  const zaSezonu = xpTabulka(sezona);
+  const zaVsetko = xpTabulka();
+  const minute = minuteGoldy();
+
+  const riadky = db.students
+    .filter((s) => s.active)
+    .filter((s) => (groupId ? isInGroup(s, groupId) : true))
+    .map((s) => {
+      const sez = zaSezonu.get(s.id) ?? prazdnyZaznam(s.id);
+      const cel = zaVsetko.get(s.id) ?? prazdnyZaznam(s.id);
+      const lvl = levelZoXp(cel.xp);
+      const zarobene = goldZaLevel(lvl.level);
+      const minul = minute.get(s.id) ?? 0;
+      return {
+        student: s, sezona: sez, celkovo: cel, ...lvl,
+        goldZarobene: zarobene, goldMinute: minul, gold: zarobene - minul,
+      };
+    });
+
+  const podlaMena = (a, b) => a.student.name.localeCompare(b.student.name, 'sk');
+  riadky.sort(zoradenie === 'celkovo'
+    ? (a, b) => b.level - a.level || b.celkovo.xp - a.celkovo.xp || podlaMena(a, b)
+    : (a, b) => b.sezona.xp - a.sezona.xp || b.level - a.level || podlaMena(a, b));
+
+  return riadky.map((r, i) => ({ ...r, poradie: i + 1 }));
+}
+
+/** Karta jedného hráča — to isté, len pre neho. */
+export function hracskyProfil(studentId, obdobie = null) {
+  return rebricek({ obdobie }).find((r) => r.student.id === studentId) ?? null;
+}
+
+/* ---- klubový obchod ---- */
+
+export const shopItems = ({ includeInactive = false } = {}) =>
+  (db.shopItems ?? [])
+    .filter((i) => includeInactive || i.active !== false)
+    .sort((a, b) => (a.ord ?? 0) - (b.ord ?? 0) || (a.price ?? 0) - (b.price ?? 0));
+
+export function upsertShopItem(data) {
+  const { id, ...zvysok } = data;
+  let item = id ? db.shopItems.find((i) => i.id === id) : null;
+  if (item) {
+    Object.assign(item, zvysok);
+  } else {
+    item = {
+      id: id || uid('itm'), name: '', description: '', price: 10, kind: 'vec',
+      active: true, ord: (db.shopItems?.length ?? 0) + 1,
+      createdAt: new Date().toISOString(), ...zvysok,
+    };
+    db.shopItems.push(item);
+  }
+  sync.up('shop_items', item);
+  save();
+  return item;
+}
+
+export function deleteShopItem(id) {
+  db.shopItems = db.shopItems.filter((i) => i.id !== id);
+  sync.del('shop_items', id);
+  save();
+}
+
+export const purchasesOfStudent = (studentId) =>
+  (db.purchases ?? [])
+    .filter((n) => n.studentId === studentId)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+
+/**
+ * Nákup v obchode. Zámerne vracia chybu, keď na to hráč nemá —
+ * inak by sa dal zostatok stlačiť pod nulu a goldy by stratili zmysel.
+ */
+export function kupit(studentId, itemId) {
+  const item = (db.shopItems ?? []).find((i) => i.id === itemId);
+  if (!item) throw new Error('Taká odmena už v ponuke nie je.');
+  const profil = hracskyProfil(studentId);
+  if (!profil) throw new Error('Žiak sa nenašiel.');
+  const cena = Number(item.price) || 0;
+  if (profil.gold < cena) {
+    throw new Error(`Nemá dosť goldov — má ${profil.gold}, treba ${cena}.`);
+  }
+  const nakup = {
+    id: uid('buy'), studentId, itemId: item.id, itemName: item.name,
+    price: cena, at: new Date().toISOString(), delivered: false, note: '',
+  };
+  db.purchases.push(nakup);
+  sync.up('purchases', nakup);
+  save();
+  return nakup;
+}
+
+/** Odmena odovzdaná do ruky — nech tréner vie, čo má ešte priniesť. */
+export function oznacitOdovzdane(nakupId, delivered = true) {
+  const n = db.purchases.find((x) => x.id === nakupId);
+  if (!n) return null;
+  n.delivered = delivered;
+  sync.up('purchases', n);
+  save();
+  return n;
+}
+
+/** Vrátenie nákupu — goldy sa vrátia, lebo zostatok sa počíta z nákupov. */
+export function zrusitNakup(nakupId) {
+  db.purchases = db.purchases.filter((n) => n.id !== nakupId);
+  sync.del('purchases', nakupId);
+  save();
+}
+
+/** Odmeny, ktoré si deti vybrali, ale tréner ich ešte nedoniesol. */
+export const nedorucneNakupy = () =>
+  (db.purchases ?? [])
+    .filter((n) => !n.delivered)
+    .map((n) => ({ ...n, student: studentById(n.studentId) }))
+    .filter((n) => n.student)
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+
 /* ---------- rozvrh tréningov ---------- */
 
 export const DNI = ['nedeľa', 'pondelok', 'utorok', 'streda', 'štvrtok', 'piatok', 'sobota'];
@@ -1121,7 +1366,8 @@ export function importJSON(text) {
   // inak by appka spadla hneď pri prvom otvorení rozvrhu či podujatí
   parsed.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
   parsed.groups = parsed.groups?.length ? parsed.groups : GROUPS;
-  for (const k of ['trainers', 'sessions', 'attendance', 'payments', 'schedule', 'events', 'eventResults']) {
+  for (const k of ['trainers', 'sessions', 'attendance', 'payments', 'schedule', 'events',
+    'eventResults', 'shopItems', 'purchases']) {
     if (!Array.isArray(parsed[k])) parsed[k] = [];
   }
   for (const k of Object.keys(db)) delete db[k];
@@ -1154,6 +1400,8 @@ export function importJSONToCloud(text) {
     ['schedule', db.schedule],
     ['events', db.events],
     ['event_results', db.eventResults],
+    ['shop_items', db.shopItems],
+    ['purchases', db.purchases],
   ];
 
   let pocet = 0;

@@ -62,9 +62,10 @@ js/api.js               komunikácia so Supabase + šifrovaný PIN trezor
 js/sync.js              offline fronta, odosielanie a sťahovanie zmien
 js/router.js            hash router
 js/ui.js                UI pomôcky (el, sheet, toast, dátumy, CSV)
-js/views/               login, training, students, payments, reports, settings
+js/views/               login, training, students, payments, rebricek, points, reports, settings
 sql/01-schema.sql       ★ tabuľky + bezpečnostné pravidlá (vložiť do Supabase)
 sql/02-pridat-trenera.sql  ★ pridanie trénera
+sql/03..09              neskoršie rozšírenia (naposledy 09 = XP, levely, goldy, obchod)
 icons/                  ikony appky
 NASADENIE.md            návod krok za krokom
 ```
