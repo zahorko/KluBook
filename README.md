@@ -66,6 +66,7 @@ js/views/               login, training, students, payments, rebricek, points, r
 sql/01-schema.sql       ★ tabuľky + bezpečnostné pravidlá (vložiť do Supabase)
 sql/02-pridat-trenera.sql  ★ pridanie trénera
 sql/03..09              neskoršie rozšírenia (naposledy 09 = XP, levely, goldy, obchod)
+nastroje/kontrola.py    kontrola kódu (hľadá volania na neexistujúce funkcie)
 icons/                  ikony appky
 NASADENIE.md            návod krok za krokom
 ```

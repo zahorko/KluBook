@@ -13,7 +13,7 @@ import {
 } from '../ui.js';
 import {
   db, sortedGroups, groupName, seasonRange, rebricek, gamifikacia,
-  shopItems, upsertShopItem, deleteShopItem, kupit, nedorucneNakupy,
+  shopItems, upsertShopItem, deleteShopItem, kupit, nedorucneNakupy, ODPORUCANA_PONUKA,
   oznacitOdovzdane, zrusitNakup, trainsWithClub, isInGroup, todayISO,
   eventsInRange, xpNaDalsiLevel,
 } from '../store.js';
@@ -242,9 +242,21 @@ function obchodTab() {
     el('div', {},
       el('h2.section-title', { text: 'Ponuka obchodu' }),
       ponuka.length === 0
-        ? el('div.empty', {},
-          el('span.empty__mark', { text: '💰' }),
-          'Ponuka je zatiaľ prázdna. Pridajte prvú odmenu — kým nie je čo kúpiť, goldy nikoho neťahajú.')
+        ? el('div.stack', {},
+          el('div.empty', {},
+            el('span.empty__mark', { text: '💰' }),
+            'Ponuka je zatiaľ prázdna. Kým nie je čo kúpiť, goldy nikoho neťahajú.'),
+          el('button.btn.btn--soft.btn--block', {
+            text: '✨ Naplniť odporúčanou ponukou',
+            onclick: () => {
+              for (const i of ODPORUCANA_PONUKA) upsertShopItem(i);
+              toast(`Pridaných ${ODPORUCANA_PONUKA.length} odmien — ceny si pokojne prepíšte`);
+              refresh();
+            },
+          }),
+          el('p.tiny.faint', { style: { margin: 0 },
+            text: 'Lacné sladké a slané na začiatok, výsady v strede, veľké ceny na konci sezóny. Všetko sa dá upraviť aj zmazať.' }),
+        )
         : el('div.card.card--flush.list', {}, ponuka.map((i) =>
           el('button.item', { onclick: () => kupitSheet(i) },
             el('span', { style: { fontSize: '20px', minWidth: '28px', textAlign: 'center' },

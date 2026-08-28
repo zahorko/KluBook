@@ -586,6 +586,7 @@ function gamifikaciaCard() {
         text: 'XP sa počíta z dochádzky a podujatí, nikde sa neukladá — po zmene týchto čísel sa všetko prepočíta samo. '
           + 'Pozor pri znižovaní: komu tým ubudnú goldy, môže mať zostatok v mínuse, kým si to nedobehne. Nákupy sa nemažú.' }),
       el('div.grid2', {}, cislo('xpZaTrening', 'XP za tréning'), cislo('goldZaLevel', 'Goldov za level up')),
+      el('div.grid2', {}, cislo('seriaDlzka', 'Séria: koľko po sebe'), cislo('seriaBonus', 'Bonus XP za sériu')),
       el('div.grid2', {}, cislo('levelZaklad', 'XP na prvý level'), cislo('levelKrok', 'O koľko drahší každý ďalší')),
       cislo('maxLevel', 'Najvyšší level'),
       el('div', {},
@@ -593,7 +594,8 @@ function gamifikaciaCard() {
         el('div.card.stack', { style: { background: 'var(--cream-deep)', borderColor: 'transparent', gap: '4px' } },
           ...ukazka,
           el('p.tiny.faint', { style: { margin: '6px 0 0' },
-            text: `Kto chodí dvakrát do týždňa a nikam nejde hrať, nazbiera ${tyzdnovXP} XP týždenne.` }),
+            text: `Kto chodí dvakrát do týždňa a nikam nejde hrať, nazbiera ${tyzdnovXP} XP týždenne`
+              + `${g.seriaDlzka ? ` a každých ${g.seriaDlzka} tréningov po sebe mu pridá ${g.seriaBonus} XP navyše` : ''}.` }),
         ),
       ),
     ),

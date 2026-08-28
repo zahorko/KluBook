@@ -6,6 +6,7 @@ import {
   db, sortedGroups, studentsOfGroup, paymentStatus, paymentFor,
   togglePayment, setPayment, todayISO, periodOf, saveNow,
   studentFee, paidAmount, hasOwnFee, currentTrainer, allStudents, primaryGroupId,
+  studentGroupNames,
 } from '../store.js';
 import { refresh } from '../router.js';
 import { contactSheet, maKontakt, textPlatba } from '../contact.js';

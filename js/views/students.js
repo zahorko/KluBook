@@ -16,6 +16,7 @@ import {
 } from '../store.js';
 import { go, refresh } from '../router.js';
 import { contactSheet, telHref, maKontakt, textVymeskavanie } from '../contact.js';
+import { sklonuj } from './training.js';
 
 const uiState = { groupId: null, query: '' };
 

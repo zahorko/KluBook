@@ -361,6 +361,17 @@ table.data th:first-child, table.data td:first-child {
   max-width: calc(100vw - 32px); text-align: center;
 }
 .toast--on { opacity: 1; transform: translate(-50%, 0); }
+/* level up nesmie vyzerať ako bežná hláška — je to odmena, nech je ju vidieť */
+.toast--oslava {
+  background: var(--terracotta); color: #fff;
+  font-size: 15px; font-weight: 600; padding: 13px 22px;
+}
+.toast--oslava.toast--on { animation: oslava .5s ease; }
+@keyframes oslava {
+  0%   { transform: translate(-50%, 14px) scale(.9); }
+  55%  { transform: translate(-50%, -4px) scale(1.06); }
+  100% { transform: translate(-50%, 0) scale(1); }
+}
 
 /* ---------- modal / sheet ---------- */
 .scrim {

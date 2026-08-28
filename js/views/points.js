@@ -8,12 +8,13 @@
    ========================================================= */
 import {
   el, mount, toast, sheet, confirmSheet, field, textInput, selectInput,
-  fmtDate, fmtDayShort,
+  fmtDate, fmtDayShort, downloadCSV,
 } from '../ui.js';
 import {
   db, groupName, studentById, everyone, trainsWithClub, eventById, resultsOfEvent,
   upsertEvent, deleteEvent, setEventResult, removeEventResult,
   scoringRules, DRUHY_PODUJATI, todayISO, updateSettings, isInGroup,
+  stavHraca, gamifikacia,
 } from '../store.js';
 import { go, refresh } from '../router.js';
 
@@ -26,7 +27,7 @@ export function eventsSection(podujatia) {
       el('button.btn.btn--ghost.btn--sm', {
         style: { marginTop: '14px' },
         text: '⤓ CSV',
-        onclick: exportLeaderboard,
+        onclick: () => exportPodujatia(podujatia),
       }),
     ),
     podujatia.length === 0
@@ -56,6 +57,20 @@ export function eventsSection(podujatia) {
 }
 
 /* ---------------- podujatie ---------------- */
+/** Zoznam podujatí aj s výsledkami do tabuľky. */
+function exportPodujatia(podujatia) {
+  const rows = [['Dátum', 'Podujatie', 'Druh', 'Miesto', 'Hráč', 'Výhry', 'Remízy', 'Prehry', 'Umiestnenie', 'XP']];
+  for (const e of podujatia) {
+    for (const v of resultsOfEvent(e.id)) {
+      const z = studentById(v.studentId);
+      rows.push([e.date, e.name, DRUHY_PODUJATI[e.kind] ?? e.kind, e.place || '',
+        z?.name ?? '—', v.wins || 0, v.draws || 0, v.losses || 0, v.placement || '', v.points || 0]);
+    }
+  }
+  downloadCSV(`podujatia-${todayISO()}.csv`, rows);
+  toast('CSV stiahnuté');
+}
+
 export function renderEvent(root, eventId) {
   const e = eventById(eventId);
   if (!e) { mount(root, el('div.empty', { text: 'Podujatie sa nenašlo.' })); return; }
@@ -121,7 +136,17 @@ export function renderEvent(root, eventId) {
 
 /** Jeden hráč na podujatí — pri lige rýchle V/R/P, pri turnaji počty partií. */
 function hracRiadok(event, v, paint) {
-  const uloz = (data) => { setEventResult(event.id, v.studentId, data); paint(); };
+  // XP sa počíta, level teda nikto „nezapíše" — porovnáme ho pred zápisom
+  // a po ňom, nech postup nezapadne
+  const uloz = (data) => {
+    const pred = stavHraca(v.studentId);
+    setEventResult(event.id, v.studentId, data);
+    const po = stavHraca(v.studentId);
+    paint();
+    if (po.level > pred.level) {
+      toast(`🎉 ${v.student.name} má level ${po.level} · +${gamifikacia().goldZaLevel} 💰`, { oslava: true });
+    }
+  };
 
   const jePartia = (typ) => (typ === 'v' ? v.wins : typ === 'r' ? v.draws : v.losses) > 0;
   const tlacidloVysledku = (typ, popis, farba) => el('button.btn.btn--sm', {

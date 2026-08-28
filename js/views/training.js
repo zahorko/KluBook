@@ -9,7 +9,7 @@ import {
   db, sortedGroups, groupName, trainerName, openSession, unfinishedSessions,
   startSession, endSession,
   addManualSession, deleteSession, studentsOfGroup, attendanceOfSession, setAttendance,
-  sessionRoster, pridatelniDoTreningu, studentGroupNames,
+  sessionRoster, pridatelniDoTreningu, studentGroupNames, stavHraca, gamifikacia,
   paymentStatus, durationMinutes, todayISO, nowHM, periodOf, sessionsInRange, updateSession,
   droppingStudents, markContacted, currentTrainer,
   todaysSchedule, missingSessions, markScheduleSkipped, DNI,
@@ -427,7 +427,7 @@ export function renderSession(root, trainer, sessionId) {
           return el('button', {
             class: `att${state === 'present' ? ' att--present' : state === 'absent' ? ' att--absent' : ''}`,
             onclick: () => {
-              setAttendance(session.id, s.id, !(rec?.present ?? false));
+              zapisSDochadzkou(session.id, s, !(rec?.present ?? false));
               paint();
             },
           },
@@ -443,9 +443,14 @@ export function renderSession(root, trainer, sessionId) {
   };
 
   const markAll = (present) => {
-    for (const s of sessionRoster(session)) setAttendance(session.id, s.id, present);
+    const postupy = [];
+    for (const s of sessionRoster(session)) {
+      const p = zapisSDochadzkou(session.id, s, present, { ticho: true });
+      if (p) postupy.push(p);
+    }
     paint();
-    toast(present ? 'Všetci označení ako prítomní' : 'Všetci označení ako neprítomní');
+    if (postupy.length) oznamPostupy(postupy);
+    else toast(present ? 'Všetci označení ako prítomní' : 'Všetci označení ako neprítomní');
   };
 
   paint();
@@ -506,6 +511,35 @@ export function renderSession(root, trainer, sessionId) {
       }),
     ),
   ));
+}
+
+
+/**
+ * Zápis dochádzky s ohlásením postupu na vyšší level.
+ * XP nikde neležia, počítajú sa — takže level vieme porovnať len tak,
+ * že sa spýtame pred zápisom a po ňom.
+ */
+function zapisSDochadzkou(sessionId, student, present, { ticho = false } = {}) {
+  const pred = stavHraca(student.id);
+  setAttendance(sessionId, student.id, present);
+  const po = stavHraca(student.id);
+  const postup = po.level > pred.level ? { meno: student.name, level: po.level } : null;
+
+  if (postup && !ticho) {
+    toast(`🎉 ${student.name} má level ${po.level} · +${gamifikacia().goldZaLevel} 💰`, { oslava: true });
+  } else if (!ticho && present && po.seria && po.seria % gamifikacia().seriaDlzka === 0) {
+    toast(`🔥 ${student.name} — ${po.seria} tréningov po sebe · +${gamifikacia().seriaBonus} XP`, { oslava: true });
+  }
+  return postup;
+}
+
+/** Keď naraz postúpi viac detí, nech to nie je päť hlášok za sebou. */
+function oznamPostupy(postupy) {
+  if (postupy.length === 1) {
+    toast(`🎉 ${postupy[0].meno} má level ${postupy[0].level}`, { oslava: true });
+    return;
+  }
+  toast(`🎉 Postúpili: ${postupy.map((p) => `${p.meno} (${p.level})`).join(', ')}`, { oslava: true });
 }
 
 /* ---------------- hárky ---------------- */

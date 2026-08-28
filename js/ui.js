@@ -101,12 +101,14 @@ export const shiftPeriod = (period, delta) => {
 
 /* ---------- toast ---------- */
 let toastTimer = null;
-export function toast(message) {
+export function toast(message, { oslava = false } = {}) {
   const node = document.getElementById('toast');
   node.textContent = message;
+  node.classList.toggle('toast--oslava', oslava);
   node.classList.add('toast--on');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => node.classList.remove('toast--on'), 2200);
+  // level up nech chvíľu postojí — tréner to má stihnúť prečítať deťom
+  toastTimer = setTimeout(() => node.classList.remove('toast--on'), oslava ? 4200 : 2200);
 }
 
 /* ---------- sheet (modal zdola) ---------- */

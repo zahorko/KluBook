@@ -941,6 +941,8 @@ export function recomputeAllPoints() {
 
 export const DEFAULT_GAMIFIKACIA = {
   xpZaTrening: 20,     // za každú prítomnosť na tréningu
+  seriaDlzka: 5,       // koľko tréningov po sebe je séria
+  seriaBonus: 50,      // XP navyše za každú dokončenú sériu
   levelZaklad: 60,     // XP na prvý level up
   levelKrok: 40,       // o koľko sa každý ďalší level predraží
   maxLevel: 35,
@@ -1001,16 +1003,37 @@ function xpTabulka({ from = null, to = null } = {}) {
   const zaznam = (id) => {
     if (!out.has(id)) {
       out.set(id, {
-        studentId: id, xp: 0, xpZTreningov: 0, xpZPodujati: 0,
+        studentId: id, xp: 0, xpZTreningov: 0, xpZPodujati: 0, xpZoSerii: 0,
         treningy: 0, podujatia: 0, vyhry: 0, remizy: 0, prehry: 0,
+        seria: 0, serie: 0,
       });
     }
     return out.get(id);
   };
 
+  /* Dochádzku prechádzame po žiakoch a v poradí, lebo séria sa počíta
+     z toho, čo šlo za sebou. Neukončené tréningy vynechávame — v nich sú
+     predvolene všetci prítomní a séria by sa nafúkla, kým sa dochádzka
+     naozaj nezapíše. */
+  const ukoncene = new Set(db.sessions.filter((t) => t.endTime).map((t) => t.id));
+  const poradieTreningu = new Map(db.sessions.map((t) => [t.id, `${t.date} ${t.startTime ?? ''}`]));
+  const podlaZiaka = new Map();
   for (const a of db.attendance) {
-    if (!a.present || !vRozsahu(datumTreningu.get(a.sessionId))) continue;
-    zaznam(a.studentId).treningy += 1;
+    if (!ukoncene.has(a.sessionId) || !vRozsahu(datumTreningu.get(a.sessionId))) continue;
+    if (!podlaZiaka.has(a.studentId)) podlaZiaka.set(a.studentId, []);
+    podlaZiaka.get(a.studentId).push(a);
+  }
+  for (const [studentId, zoznam] of podlaZiaka) {
+    zoznam.sort((x, y) => String(poradieTreningu.get(x.sessionId)).localeCompare(String(poradieTreningu.get(y.sessionId))));
+    const z = zaznam(studentId);
+    let vRade = 0;
+    for (const a of zoznam) {
+      if (!a.present) { vRade = 0; continue; }
+      z.treningy += 1;
+      vRade += 1;
+      if (g.seriaDlzka > 0 && vRade % g.seriaDlzka === 0) z.serie += 1;
+    }
+    z.seria = vRade;   // koľko má práve teraz za sebou
   }
   for (const r of db.eventResults) {
     if (!vRozsahu(datumPodujatia.get(r.eventId))) continue;
@@ -1023,14 +1046,16 @@ function xpTabulka({ from = null, to = null } = {}) {
   }
   for (const z of out.values()) {
     z.xpZTreningov = z.treningy * g.xpZaTrening;
-    z.xp = Math.round(z.xpZTreningov + z.xpZPodujati);
+    z.xpZoSerii = z.serie * g.seriaBonus;
+    z.xp = Math.round(z.xpZTreningov + z.xpZoSerii + z.xpZPodujati);
   }
   return out;
 }
 
 const prazdnyZaznam = (studentId) => ({
-  studentId, xp: 0, xpZTreningov: 0, xpZPodujati: 0,
+  studentId, xp: 0, xpZTreningov: 0, xpZPodujati: 0, xpZoSerii: 0,
   treningy: 0, podujatia: 0, vyhry: 0, remizy: 0, prehry: 0,
+  seria: 0, serie: 0,
 });
 
 /** Koľko goldov kto minul — jeden prechod cez nákupy. */
@@ -1078,12 +1103,39 @@ export function rebricek({ groupId = null, obdobie = null, zoradenie = 'sezona' 
   return riadky.map((r, i) => ({ ...r, poradie: i + 1 }));
 }
 
+/**
+ * Level a séria jedného hráča. Lacnejšie než celý rebríček — používa sa
+ * hneď po zápise dochádzky či výsledku, aby sa dal postup zachytiť
+ * v okamihu, keď nastal. Inak by level ticho stúpol a nikto by si to
+ * nevšimol, čo je pri odmene to najhoršie, čo sa môže stať.
+ */
+export function stavHraca(studentId) {
+  const z = xpTabulka().get(studentId) ?? prazdnyZaznam(studentId);
+  return { ...levelZoXp(z.xp), xp: z.xp, seria: z.seria, serie: z.serie };
+}
+
 /** Karta jedného hráča — to isté, len pre neho. */
 export function hracskyProfil(studentId, obdobie = null) {
   return rebricek({ obdobie }).find((r) => r.student.id === studentId) ?? null;
 }
 
 /* ---- klubový obchod ---- */
+
+/**
+ * Odporúčaná ponuka na začiatok. Zámerne stúpa od drobností po veľké ceny —
+ * dieťa musí mať čo kúpiť už po pár týždňoch, inak goldy nikoho neťahajú,
+ * a zároveň niečo, na čo sa šetrí celú sezónu.
+ */
+export const ODPORUCANA_PONUKA = [
+  { name: 'Sladké prekvapenie', description: 'keksík alebo čokoláda po tréningu', price: 10, kind: 'vec', ord: 1 },
+  { name: 'Slané prekvapenie', description: 'chrumky alebo tyčinky po tréningu', price: 10, kind: 'vec', ord: 2 },
+  { name: 'Vyber tému tréningu', description: 'na jeden tréning rozhoduješ ty', price: 25, kind: 'vyhoda', ord: 3 },
+  { name: 'Prvý si vyberáš súpera', description: 'na najbližšom tréningu', price: 20, kind: 'vyhoda', ord: 4 },
+  { name: 'Simultánka proti trénerovi', description: 'ty a spolužiaci proti mne', price: 40, kind: 'vyhoda', ord: 5 },
+  { name: 'Klubová nálepka', description: 'na zošit, fľašu alebo mobil', price: 30, kind: 'vec', ord: 6 },
+  { name: 'Šachová kniha', description: 'podľa tvojej úrovne', price: 90, kind: 'vec', ord: 7 },
+  { name: 'Klubové tričko', description: 's logom 1. ŠK Košice', price: 120, kind: 'vec', ord: 8 },
+];
 
 export const shopItems = ({ includeInactive = false } = {}) =>
   (db.shopItems ?? [])
