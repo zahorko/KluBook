@@ -1491,6 +1491,22 @@ export function updateSettings(patch) {
   saveNow();
 }
 
+/**
+ * Založí účet ďalšiemu trénerovi. Robí to server (appka na to nemá práva),
+ * my si len po úspechu doplníme trénera do lokálnej kópie, nech ho vidno hneď.
+ */
+export async function pridatTrenera({ name, email, password }) {
+  const vysledok = await api.callFunction('treneri', { name, email, password });
+  if (vysledok?.id && !db.trainers.some((t) => t.id === vysledok.id)) {
+    db.trainers.push({
+      id: vysledok.id, name, initials: initialsOf(name), active: true,
+      groupIds: [], createdAt: new Date().toISOString(),
+    });
+    saveNow();
+  }
+  return vysledok;
+}
+
 export function updateTrainer(trainer) {
   sync.up('trainers', trainer);
   saveNow();

@@ -239,6 +239,28 @@ export const upsertRows = (table, rows, { onConflict } = {}) =>
     prefer: 'resolution=merge-duplicates,return=minimal',
   });
 
+/**
+ * Zavolá serverovú funkciu (Supabase Edge Function). Používa sa na to,
+ * čo appka v telefóne robiť nesmie — napríklad zakladať účty, lebo na to
+ * treba servisný kľúč, ktorý do telefónu nikdy nepatrí.
+ */
+export async function callFunction(name, body = {}) {
+  const token = await accessToken();
+  const res = await fetch(`${baseUrl()}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: apiKey(),
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  let data = null;
+  try { data = await res.json(); } catch { /* prázdna odpoveď */ }
+  if (!res.ok) throw new ApiError(data?.error || `Server odmietol požiadavku (${res.status})`, res.status, data);
+  return data;
+}
+
 export const deleteRow = (table, id) =>
   restRequest(`${table}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', prefer: 'return=minimal' });
 

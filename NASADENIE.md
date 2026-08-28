@@ -49,6 +49,10 @@ Od tejto chvíle účty vznikajú len tak, že ich ručne založíte vy.
 Samotný účet ešte nestačí, KluBook potrebuje vedieť, že ste tréner.
 
 1. **SQL Editor → New query**.
+> **Od verzie v40 to už takto netreba.** Nového trénera pridáte priamo v appke:
+> **Viac → Tréneri → ＋ Pridať trénera**. Postup nižšie ostáva len pre prípad,
+> že by sa appka nedala otvoriť.
+
 2. Otvorte [`sql/02-pridat-trenera.sql`](sql/02-pridat-trenera.sql), skopírujte obsah a v ňom prepíšte:
    - `'sem@vlozte-email.sk'` → váš e-mail z kroku 3,
    - `'Jakub Zahorček'` → vaše meno,

@@ -5,7 +5,7 @@ import { el, mount, toast, sheet, confirmSheet, field, textInput, selectInput, d
 import {
   db, isCloud, saveNow, logout, initialsOf, uid, newSalt, hashPin, setDemoPin,
   exportJSON, importJSON, importJSONToCloud, resetAll, clearDemoData, todayISO,
-  gamifikacia, updateGamifikacia, xpPreLevel,
+  gamifikacia, updateGamifikacia, xpPreLevel, pridatTrenera,
   updateSettings, updateTrainer, applyServerData, syncNow,
   setDevicePin, hasDevicePin, devicePinEmail, lockApp,
   studentById, groupName, trackingSince,
@@ -365,8 +365,13 @@ function trainersCard() {
           ),
         ),
       ),
+      el('button.btn.btn--block', {
+        text: '＋ Pridať trénera',
+        style: { marginTop: '12px' },
+        onclick: () => novyTrenerSheet(),
+      }),
       el('p.tiny.faint', { style: { margin: '10px 2px 0' },
-        text: 'Nového trénera pridáte v Supabase (Authentication → Add user) a doplníte do tabuľky trainers. Postup je v NASADENIE.md, krok 5.' }),
+        text: 'Účet vznikne rovno tu. Heslo odovzdajte trénerovi osobne — pri prvom prihlásení si ho môže zmeniť.' }),
     );
   }
 
@@ -680,6 +685,70 @@ function clubCard() {
         text: 'Prehľady nezobrazujú mesiace spred tohto dátumu. Nastavte napríklad začiatok sezóny.' }),
     ),
   );
+}
+
+
+/** Náhodné heslo, ktoré sa dá prečítať do telefónu bez chýb. */
+function navrhnutHeslo() {
+  const slova = ['veza', 'strelec', 'jazdec', 'pesiak', 'kral', 'dama', 'rosada', 'matt'];
+  const s = slova[Math.floor(Math.random() * slova.length)];
+  const cislo = 100 + Math.floor(Math.random() * 900);
+  return `${s}-${cislo}-sach`;
+}
+
+/** Založenie účtu ďalšiemu trénerovi. */
+function novyTrenerSheet() {
+  sheet('Nový tréner', (body, close) => {
+    const meno = textInput({ placeholder: 'Meno a priezvisko' });
+    const email = el('input.input', { type: 'email', placeholder: 'email@priklad.sk', autocapitalize: 'off', spellcheck: 'false' });
+    const heslo = textInput({ value: navrhnutHeslo() });
+    const stav = el('p.small', { style: { margin: 0, minHeight: '18px' } });
+
+    const uloz = el('button.btn.btn--block', {
+      text: 'Založiť účet',
+      style: { marginTop: '8px' },
+      onclick: async () => {
+        if (!meno.value.trim()) { toast('Zadajte meno'); return; }
+        uloz.disabled = true;
+        stav.textContent = 'Zakladám účet…';
+        stav.style.color = 'var(--ink-soft)';
+        try {
+          await pridatTrenera({ name: meno.value.trim(), email: email.value.trim(), password: heslo.value });
+          close();
+          toast(`${meno.value.trim()} má účet`);
+          // heslo ukážeme ešte raz, nech ho má tréner z čoho prečítať
+          sheet('Účet je hotový', (b2) => {
+            mount(b2,
+              el('p.small.muted', { style: { margin: 0 }, text: 'Odovzdajte tieto údaje trénerovi. Heslo sa už nebude dať zobraziť.' }),
+              el('div.card.stack', { style: { background: 'var(--cream-deep)', borderColor: 'transparent' } },
+                el('div', {}, el('div.tiny.faint', { text: 'E-mail' }), el('div.mono', { text: email.value.trim() })),
+                el('div', {}, el('div.tiny.faint', { text: 'Heslo' }),
+                  el('div.mono', { style: { fontSize: '18px', fontWeight: '700' }, text: heslo.value })),
+              ),
+              el('p.tiny.faint', { style: { margin: 0 },
+                text: 'Nech si appku otvorí na 1skke.zahorcek.com, prihlási sa a nastaví si PIN.' }),
+            );
+          });
+          refresh();
+        } catch (e) {
+          stav.textContent = e.message;
+          stav.style.color = 'var(--red)';
+          uloz.disabled = false;
+        }
+      },
+    });
+
+    mount(body,
+      el('p.small.muted', { style: { margin: 0 },
+        text: 'Tréner sa bude prihlasovať e-mailom a heslom. Účet vznikne hneď a uvidí všetky dáta klubu.' }),
+      field('Meno *', meno),
+      field('E-mail *', email),
+      field('Heslo', heslo),
+      el('p.tiny.faint', { style: { margin: '-4px 2px 0' }, text: 'Aspoň 8 znakov. Pokojne nechajte navrhnuté.' }),
+      stav,
+      uloz,
+    );
+  });
 }
 
 /* ---------------- dáta ---------------- */
