@@ -10,6 +10,7 @@ import {
   startSession, endSession,
   addManualSession, deleteSession, studentsOfGroup, attendanceOfSession, setAttendance,
   sessionRoster, pridatelniDoTreningu, studentGroupNames, stavHraca, gamifikacia,
+  removeAttendance,
   paymentStatus, durationMinutes, todayISO, nowHM, periodOf, sessionsInRange, updateSession,
   droppingStudents, markContacted, currentTrainer,
   todaysSchedule, missingSessions, markScheduleSkipped, DNI,
@@ -491,9 +492,9 @@ export function renderSession(root, trainer, sessionId) {
           : 'Ťuknutím na meno prepnete prítomný / neprítomný. Bodka vľavo = stav platby za tento mesiac.' }),
       listBox,
       el('button.btn.btn--ghost.btn--block', {
-        text: '＋ Doplniť žiaka do dochádzky',
+        text: '＋ Upraviť zoznam žiakov',
         style: { marginTop: '10px' },
-        onclick: () => doplnitZiakaSheet(session, paint),
+        onclick: () => zoznamZiakovSheet(session, paint),
       }),
     ),
 
@@ -544,50 +545,95 @@ function oznamPostupy(postupy) {
 
 /* ---------------- hárky ---------------- */
 
-/** Doplnenie žiaka do dochádzky tréningu — pre toho, kto prišiel, ale
-    v skupine vtedy ešte nebol (alebo ho medzitým niekto archivoval). */
-function doplnitZiakaSheet(session, after) {
-  sheet('Doplniť žiaka do dochádzky', (body, close) => {
-    const kandidati = pridatelniDoTreningu(session);
-    if (!kandidati.length) {
-      mount(body, el('div.empty', { text: 'Všetci žiaci klubu už v tomto tréningu sú.' }));
-      return;
-    }
-    const hladaj = textInput({ placeholder: 'Hľadať žiaka…', oninput: () => vykresli() });
-    const zoznam = el('div.card.card--flush.list');
+/**
+ * Kto na tréningu bol. Jeden hárok robí oboje — doplní toho, kto prišiel
+ * a v skupine vtedy nebol, aj odoberie toho, kto sa do zoznamu dostal omylom.
+ * Kandidáti sú po skupinách, lebo pri päťdesiatich žiakoch je jeden dlhý
+ * zoznam na nič.
+ */
+function zoznamZiakovSheet(session, after) {
+  sheet('Zoznam žiakov na tréningu', (body, close) => {
+    const obsah = el('div.stack');
 
-    const vykresli = () => {
-      const q = hladaj.value.trim().toLowerCase();
-      const vyber = q ? kandidati.filter((s) => s.name.toLowerCase().includes(q)) : kandidati;
-      mount(zoznam, vyber.length === 0
-        ? el('div.empty', { text: 'Nikto taký.' })
-        : vyber.slice(0, 40).map((s) =>
-          el('button.item', {
-            onclick: () => {
-              setAttendance(session.id, s.id, true);
-              close();
-              toast(`${s.name} doplnený ako prítomný`);
-              after?.();
-            },
-          },
-            el('span.grow', {},
-              el('div.item__title', {}, s.name,
-                s.active ? null : el('span.tag', { text: 'neaktívny', style: { marginLeft: '8px' } })),
-              el('div.item__sub', { text: studentsOfGroup(session.groupId).some((x) => x.id === s.id)
-                ? groupName(session.groupId)
-                : studentGroupNames(s).join(' + ') || 'bez skupiny' }),
+    const vykresli = (filter = '') => {
+      const q = filter.trim().toLowerCase();
+      const sekcie = pridatelniDoTreningu(session)
+        .map((sek) => ({ ...sek, ziaci: q ? sek.ziaci.filter((s) => s.name.toLowerCase().includes(q)) : sek.ziaci }))
+        .filter((sek) => sek.ziaci.length);
+      const zapisani = sessionRoster(session)
+        .filter((s) => !q || s.name.toLowerCase().includes(q));
+
+      mount(obsah,
+        sekcie.length === 0
+          ? el('p.small.muted', { style: { margin: 0 },
+            text: q ? 'Nikto taký sa nedá doplniť.' : 'Všetci žiaci klubu už v tomto tréningu sú.' })
+          : el('div.stack', {}, sekcie.map((sek) =>
+            el('div', {},
+              el('h2.section-title', { style: { margin: '10px 2px 6px' },
+                text: sek.vlastna ? `${sek.nazov} — skupina tréningu` : sek.nazov }),
+              el('div.card.card--flush.list', {}, sek.ziaci.map((s) =>
+                el('button.item', {
+                  onclick: () => {
+                    setAttendance(session.id, s.id, true);
+                    toast(`${s.name} doplnený ako prítomný`);
+                    vykresli(hladaj.value);
+                    after?.();
+                  },
+                },
+                  el('span.grow', {},
+                    el('div.item__title', {}, s.name,
+                      s.active ? null : el('span.tag', { text: 'neaktívny', style: { marginLeft: '8px' } })),
+                    // skupinu píšeme, len keď hovorí niečo navyše oproti nadpisu sekcie
+                    studentGroupNames(s).length > 1
+                      ? el('div.item__sub', { text: studentGroupNames(s).join(' + ') })
+                      : null,
+                  ),
+                  el('span', { style: { fontSize: '18px', color: 'var(--green)' }, text: '＋' }),
+                ),
+              )),
             ),
-            el('span.chev', { text: '›' }),
-          ),
-        ));
+          )),
+
+        zapisani.length
+          ? el('div', {},
+            el('h2.section-title', { style: { margin: '16px 2px 6px' }, text: `Zapísaní na tréningu · ${zapisani.length}` }),
+            el('div.card.card--flush.list', {}, zapisani.map((s) =>
+              el('div.item', {},
+                el('span.grow', {},
+                  el('div.item__title', { text: s.name }),
+                  el('div.item__sub', { text: studentGroupNames(s).join(' + ') || 'bez skupiny' }),
+                ),
+                el('button.iconbtn', {
+                  text: '✕',
+                  title: 'Odobrať z tohto tréningu',
+                  style: { color: 'var(--red)' },
+                  onclick: async () => {
+                    const ok = await confirmSheet('Odobrať z dochádzky?',
+                      `${s.name} zmizne zo zoznamu tohto tréningu. Ak tu bol a len neprišiel, `
+                      + 'nechajte ho v zozname a označte ho ako neprítomného.',
+                      { danger: true, okLabel: 'Odobrať' });
+                    if (!ok) return;
+                    removeAttendance(session.id, s.id);
+                    toast(`${s.name} odobraný z tréningu`);
+                    vykresli(hladaj.value);
+                    after?.();
+                  },
+                }),
+              ),
+            )),
+          )
+          : null,
+      );
     };
+
+    const hladaj = textInput({ placeholder: 'Hľadať žiaka…', oninput: () => vykresli(hladaj.value) });
     vykresli();
 
     mount(body,
       el('p.small.muted', { style: { margin: 0 },
-        text: 'Žiak sa pridá ako prítomný, potom sa dá prepnúť ťuknutím ako pri ostatných.' }),
+        text: 'Doplnený žiak sa pridá ako prítomný a potom sa dá prepnúť ťuknutím ako ostatní.' }),
       hladaj,
-      zoznam,
+      obsah,
     );
   });
 }

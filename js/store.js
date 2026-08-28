@@ -520,17 +520,36 @@ export function sessionRoster(session) {
   return zoznam.sort((a, b) => a.name.localeCompare(b.name, 'sk'));
 }
 
-/** Koho sa dá do hárku ešte doplniť — žiaci klubu, ktorí v ňom zatiaľ nie sú. */
+/**
+ * Koho sa dá do hárku ešte doplniť, rozdelené po skupinách.
+ * Pri päťdesiatich žiakoch je jeden dlhý zoznam nepoužiteľný — skupina
+ * daného tréningu ide prvá, ostatné pod ňu.
+ */
 export function pridatelniDoTreningu(session) {
   const uzTam = new Set(sessionRoster(session).map((s) => s.id));
-  const zoSkupiny = [];
-  const ostatni = [];
-  for (const s of allStudents({ includeInactive: true })) {
-    if (uzTam.has(s.id)) continue;
-    (isInGroup(s, session.groupId) ? zoSkupiny : ostatni).push(s);
-  }
+  const volni = allStudents({ includeInactive: true }).filter((s) => !uzTam.has(s.id));
   const podlaMena = (a, b) => a.name.localeCompare(b.name, 'sk');
-  return [...zoSkupiny.sort(podlaMena), ...ostatni.sort(podlaMena)];
+
+  const sekcie = [];
+  const pouzity = new Set();
+  const pridaj = (nazov, ziaci, vlastna = false) => {
+    if (ziaci.length) sekcie.push({ nazov, vlastna, ziaci: ziaci.sort(podlaMena) });
+  };
+
+  // skupina tohto tréningu ako prvá
+  const zoSkupiny = volni.filter((s) => isInGroup(s, session.groupId));
+  zoSkupiny.forEach((s) => pouzity.add(s.id));
+  pridaj(groupName(session.groupId), zoSkupiny, true);
+
+  for (const g of sortedGroups()) {
+    if (g.id === session.groupId) continue;
+    const ziaci = volni.filter((s) => !pouzity.has(s.id) && isInGroup(s, g.id));
+    ziaci.forEach((s) => pouzity.add(s.id));
+    pridaj(g.name, ziaci);
+  }
+  pridaj('Bez skupiny', volni.filter((s) => !pouzity.has(s.id)));
+
+  return sekcie;
 }
 
 export function durationMinutes(session) {
@@ -623,6 +642,20 @@ export function setAttendance(sessionId, studentId, present) {
   sync.up('attendance', rec);
   save();
   return rec;
+}
+
+/**
+ * Odobratie žiaka z dochádzky tréningu. Nie je to to isté ako označiť ho
+ * za neprítomného — ten na tréningu byť mal, len neprišiel. Toto je pre
+ * prípad, keď tam nemal čo hľadať (napr. omylom doplnený).
+ */
+export function removeAttendance(sessionId, studentId) {
+  const rec = db.attendance.find((a) => a.sessionId === sessionId && a.studentId === studentId);
+  if (!rec) return false;
+  db.attendance = db.attendance.filter((a) => a.id !== rec.id);
+  sync.del('attendance', rec.id);
+  save();
+  return true;
 }
 
 export function upsertStudent(data) {
