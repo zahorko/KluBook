@@ -161,7 +161,9 @@ function plnaTabulka(hraci) {
     el('h2.section-title', { text: uiState.zoradenie === 'celkovo' ? 'Celé poradie za klub' : 'Celé poradie tejto sezóny' }),
     el('div.card.card--flush.list', {}, hraci.map((r) => riadok(r))),
     el('p.tiny.faint', { style: { margin: '8px 2px 0' },
-      text: 'Toto vidíte len vy. Deťom ukazujte režim vyššie — celé poradie nikoho nemotivuje odspodu.' }),
+      text: 'Toto vidíte len vy. Deťom ukazujte režim vyššie — ten ukáže podium a nič viac, '
+        + 'celé poradie nikoho nemotivuje odspodu. Svoj level a koľko mu chýba na ďalší '
+        + 'nájde každý na svojej karte v Žiakoch.' }),
   );
 }
 
@@ -176,9 +178,6 @@ function spickaPreDeti(hraci) {
         el('div.card.card--flush.list', {}, dalsi.map((r) => riadok(r))),
       )
       : null,
-    el('p.small.muted', { style: { margin: '10px 2px 0' },
-      text: 'Ďalej zoznam naschvál nepokračuje. Kde je kto, ukáže jeho vlastná karta — '
-        + 'otvorte dieťa v Žiakoch a uvidí svoj level, XP aj koľko mu chýba na ďalší.' }),
   );
 }
 

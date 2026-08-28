@@ -109,7 +109,12 @@ a { color: var(--terracotta); }
   /* šesť záložiek sa musí zmestiť do jedného riadku aj na úzkom telefóne */
   min-width: 0; white-space: nowrap; letter-spacing: -.01em;
 }
-.nav__icon { font-size: 18px; line-height: 1; }
+/* Každá ikona dostane rovnako veľký box a je v ňom vycentrovaná —
+   emoji majú rôzne výšky a bez toho sa lišta opticky vlní. */
+.nav__icon {
+  font-size: 17px; line-height: 1; height: 21px;
+  display: grid; place-items: center;
+}
 .nav__item[aria-current="page"] { color: var(--terracotta-d); }
 .nav__item[aria-current="page"] .nav__icon { transform: translateY(-1px); }
 
@@ -335,9 +340,11 @@ button.item:hover { background: var(--cream-deep); }
 /* ---------- table ---------- */
 .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-/* mriežka platieb: pri málo mesiacoch sa neroztiahne cez celú šírku,
-   aby bodka nezostala odtrhnutá od mena */
-table.data--compact { width: auto; }
+/* Mriežka platieb: mená naberú voľné miesto a čísla ostanú zarovnané
+   vpravo. Predtým sa tabuľka krčila vľavo a na širokej obrazovke po nej
+   ostal prázdny pás. */
+table.data--compact { width: 100%; }
+table.data--compact th:first-child, table.data--compact td:first-child { width: 100%; }
 table.data--compact th.num, table.data--compact td.num { min-width: 56px; }
 table.data--compact th:first-child, table.data--compact td:first-child {
   padding-left: 16px; padding-right: 22px;

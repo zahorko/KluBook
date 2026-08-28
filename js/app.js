@@ -17,13 +17,15 @@ import { renderSettings } from './views/settings.js';
 import { renderEvent } from './views/points.js';
 import { renderRebricek, resetStav as resetRebricek } from './views/rebricek.js';
 
+/* Ikony sú zámerne všetky emoji. Keď bol medzi nimi textový znak „€",
+   vykreslil sa iným písmom a v lište opticky vytŕčal. */
 const TABS = [
-  { path: 'trening', label: 'Tréning', icon: '♟' },
+  { path: 'trening', label: 'Tréning', icon: '♟️' },
   { path: 'ziaci', label: 'Žiaci', icon: '👥' },
   { path: 'rebricek', label: 'Rebríček', icon: '🏆' },
-  { path: 'platby', label: 'Platby', icon: '€' },
+  { path: 'platby', label: 'Platby', icon: '💶' },
   { path: 'prehlady', label: 'Prehľady', icon: '📊' },
-  { path: 'nastavenia', label: 'Viac', icon: '⚙' },
+  { path: 'nastavenia', label: 'Viac', icon: '⚙️' },
 ];
 
 const TITLES = {
