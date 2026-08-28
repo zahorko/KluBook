@@ -12,10 +12,10 @@ import { renderLogin } from './views/login.js';
 import { renderTraining, renderSession, stopClock } from './views/training.js';
 import { renderStudents, renderStudentDetail } from './views/students.js';
 import { renderPayments } from './views/payments.js';
-import { renderReports } from './views/reports.js';
+import { renderReports, resetStav as resetPrehlady } from './views/reports.js';
 import { renderSettings } from './views/settings.js';
 import { renderEvent } from './views/points.js';
-import { renderRebricek } from './views/rebricek.js';
+import { renderRebricek, resetStav as resetRebricek } from './views/rebricek.js';
 
 const TABS = [
   { path: 'trening', label: 'Tréning', icon: '♟' },
@@ -71,31 +71,69 @@ function render() {
   const content = el('main.main');
   mount(app, el('div.shell', {}, topbar(path, param, trainer), content, navbar(path)));
 
-  switch (path) {
-    case 'trening':
-      param ? renderSession(content, trainer, param) : renderTraining(content, trainer);
-      break;
-    case 'ziaci':
-      param ? renderStudentDetail(content, param) : renderStudents(content);
-      break;
-    case 'platby':
-      renderPayments(content);
-      break;
-    case 'rebricek':
-      renderRebricek(content);
-      break;
-    case 'prehlady':
-      renderReports(content);
-      break;
-    case 'nastavenia':
-      renderSettings(content, trainer);
-      break;
-    case 'podujatie':
-      renderEvent(content, param);
-      break;
+  /* Keby sa obrazovka nepodarila vykresliť, appka nesmie skončiť na bielej
+     ploche bez cesty späť. Radšej priznáme chybu a ponúkneme východisko. */
+  try {
+    switch (path) {
+      case 'trening':
+        param ? renderSession(content, trainer, param) : renderTraining(content, trainer);
+        break;
+      case 'ziaci':
+        param ? renderStudentDetail(content, param) : renderStudents(content);
+        break;
+      case 'platby':
+        renderPayments(content);
+        break;
+      case 'rebricek':
+        renderRebricek(content);
+        break;
+      case 'prehlady':
+        renderReports(content);
+        break;
+      case 'nastavenia':
+        renderSettings(content, trainer);
+        break;
+      case 'podujatie':
+        renderEvent(content, param);
+        break;
+    }
+  } catch (e) {
+    console.error('KluBook — obrazovka spadla:', e);
+    mount(content, chybovaKarta(e));
   }
 
   window.scrollTo(0, posun);
+}
+
+
+/**
+ * Náhrada za spadnutú obrazovku. Dôležité je hlavne to tlačidlo — bez neho
+ * sa tréner z chyby nedostane, lebo appka si pamätá, kde bol, a otvorí to
+ * padajúce miesto znova.
+ */
+function chybovaKarta(e) {
+  return el('div.stack-lg', {},
+    el('div.card.stack', { style: { background: 'var(--terracotta-l)', borderColor: 'transparent' } },
+      el('div', { style: { fontWeight: '600', fontSize: '17px', color: 'var(--terracotta-d)' },
+        text: 'Túto obrazovku sa nepodarilo zobraziť' }),
+      el('p.small', { style: { margin: 0 },
+        text: 'Vaše dáta sú v poriadku, nič sa nestratilo — nepodarilo sa len vykresliť túto stránku. '
+          + 'Vráťte sa tlačidlom nižšie a napíšte mi, čo píše sivý riadok.' }),
+      el('p.tiny.faint', { style: { margin: 0, fontFamily: 'var(--font-mono, monospace)', wordBreak: 'break-word' },
+        text: String(e?.message || e) }),
+      el('button.btn.btn--block', {
+        text: 'Späť na Tréning',
+        onclick: () => {
+          try { resetRebricek(); resetPrehlady(); } catch { /* nevadí */ }
+          go('/trening');
+        },
+      }),
+      el('button.btn.btn--ghost.btn--block', {
+        text: 'Skúsiť znova',
+        onclick: () => render(),
+      }),
+    ),
+  );
 }
 
 /* Účet existuje, ale nie je zapísaný v tabuľke trénerov. */

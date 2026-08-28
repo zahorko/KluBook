@@ -11,7 +11,11 @@ import {
 } from '../store.js';
 import { refresh } from '../router.js';
 
-const uiState = { tab: 'treneri', range: '30' };
+const VYCHODZI_STAV = { tab: 'treneri', range: '30' };
+const uiState = { ...VYCHODZI_STAV };
+
+/** To isté ako v Rebríčku — nech sa padajúca záložka nedrží. */
+export const resetStav = () => Object.assign(uiState, VYCHODZI_STAV);
 
 const rangeFrom = (days) => {
   if (days === 'all') return '2000-01-01';

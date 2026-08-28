@@ -21,7 +21,12 @@ import { go, refresh } from '../router.js';
 import { eventsSection, seasonSheet } from './points.js';
 import { sklonuj } from './training.js';
 
-const uiState = { tab: 'tabulka', groupId: null, zoradenie: 'sezona', preDeti: false };
+const VYCHODZI_STAV = { tab: 'tabulka', groupId: null, zoradenie: 'sezona', preDeti: false };
+const uiState = { ...VYCHODZI_STAV };
+
+/** Návrat do východzieho stavu — appka to volá, keď sa obrazovka nepodarí
+    vykresliť, aby sa nezasekla na tej podzáložke, ktorá padá. */
+export const resetStav = () => Object.assign(uiState, VYCHODZI_STAV);
 
 export function renderRebricek(root) {
   const tabs = el('div.pillbar', {},
