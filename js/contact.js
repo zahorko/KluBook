@@ -85,7 +85,8 @@ export const textVymeskavanie = (student, klub, trener) =>
   + `${student.name.split(' ')[0]} nám v poslednom čase na tréningoch chýba — je všetko v poriadku? `
   + 'Dajte mi prosím vedieť, či bude pokračovať. Ďakujem.';
 
-export const textPlatba = (student, obdobie, suma, klub, trener) =>
+export const textPlatba = (student, pocetTreningov, suma, klub, trener) =>
   `${podpis(trener, klub)} `
-  + `Chcem poprosiť o úhradu členského za ${obdobie} vo výške ${suma} € (${student.name}). `
-  + 'Ďakujem pekne.';
+  + `${student.name} má zatiaľ neuhradené ${pocetTreningov} `
+  + `${pocetTreningov === 1 ? 'tréning' : pocetTreningov < 5 ? 'tréningy' : 'tréningov'}, spolu ${suma} €. `
+  + 'Poprosím o úhradu, ďakujem pekne.';

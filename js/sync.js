@@ -76,17 +76,16 @@ const MAPPERS = {
     }),
   },
   attendance: {
-    toRow: (a) => ({ id: a.id, session_id: a.sessionId, student_id: a.studentId, present: a.present, at: a.at }),
-    fromRow: (r) => ({ id: r.id, sessionId: r.session_id, studentId: r.student_id, present: r.present, at: r.at }),
-  },
-  payments: {
-    toRow: (p) => ({
-      id: p.id, student_id: p.studentId, period: p.period, status: p.status,
-      paid_date: p.paidDate, amount: p.amount, note: p.note || '',
+    toRow: (a) => ({
+      id: a.id, session_id: a.sessionId, student_id: a.studentId, present: a.present, at: a.at,
+      // platba za tréning býva pri dochádzke — tam, kde vzniká
+      paid: Boolean(a.paid),
+      paid_amount: a.paid ? (a.paidAmount ?? null) : null,
     }),
     fromRow: (r) => ({
-      id: r.id, studentId: r.student_id, period: r.period, status: r.status,
-      paidDate: r.paid_date, amount: r.amount === null ? null : Number(r.amount), note: r.note || '',
+      id: r.id, sessionId: r.session_id, studentId: r.student_id, present: r.present, at: r.at,
+      paid: Boolean(r.paid),
+      paidAmount: r.paid_amount === null || r.paid_amount === undefined ? null : Number(r.paid_amount),
     }),
   },
   schedule: {
@@ -172,13 +171,12 @@ const MAPPERS = {
 
 /* Poradie zápisu rešpektuje väzby (tréning musí existovať pred dochádzkou). */
 const PUSH_ORDER = ['club_settings', 'trainers', 'groups', 'schedule', 'students', 'sessions',
-  'attendance', 'payments', 'events', 'event_results', 'shop_items', 'purchases'];
+  'attendance', 'events', 'event_results', 'shop_items', 'purchases'];
 
 /* Tabuľky, kde záznam poznáme aj podľa inej dvojice stĺpcov než id —
    keby dvaja tréneri zapísali to isté z dvoch zariadení. */
 const CONFLICT_KEYS = {
   attendance: 'session_id,student_id',
-  payments: 'student_id,period',
   event_results: 'event_id,student_id',
 };
 
@@ -455,14 +453,13 @@ export async function pull() {
   state.status = 'syncing';
   emit();
   try {
-    const [trainers, groups, students, sessions, attendance, payments, settings, schedule,
+    const [trainers, groups, students, sessions, attendance, settings, schedule,
       events, eventResults, shopItems, purchases] = await Promise.all([
       selectAll('trainers'),
       selectAll('groups'),
       selectAll('students'),
       selectAll('sessions'),
       selectAll('attendance'),
-      selectAll('payments'),
       selectAll('club_settings'),
       // rozvrh je novšia tabuľka — ak ešte nie je založená, appka beží ďalej bez neho
       selectAll('schedule').catch(() => {
@@ -489,7 +486,6 @@ export async function pull() {
       students: map('students', students),
       sessions: map('sessions', sessions),
       attendance: map('attendance', attendance),
-      payments: map('payments', payments),
       schedule: map('schedule', schedule),
       events: map('events', events),
       eventResults: map('event_results', eventResults),

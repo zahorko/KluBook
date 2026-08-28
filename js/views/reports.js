@@ -6,8 +6,8 @@ import {
 } from '../ui.js';
 import {
   db, sortedGroups, groupName, trainerName, studentsOfGroup, sessionsInRange,
-  durationMinutes, attendanceOfSession, paymentStatus, todayISO, periodOf,
-  periodsUpToNow, primaryGroupId, allStudents, studentGroupNames,
+  durationMinutes, attendanceOfSession, todayISO, periodOf,
+  periodsUpToNow, allStudents, studentGroupNames, ucetZiaka,
 } from '../store.js';
 import { refresh } from '../router.js';
 
@@ -218,26 +218,35 @@ function studentsReport(from, to) {
 }
 
 /* ---------------- platby ---------------- */
+/**
+ * Mesiac po mesiaci: koľko hodín kto odtrénoval, koľko z nich zaplatil
+ * a koľko dlhuje. Platí sa za tréning, takže tu nestačí „áno/nie" —
+ * podstatné je, koľko chýba.
+ */
 function paymentsReport() {
-  // len mesiace, odkedy klub platby naozaj eviduje — prázdna minulosť nikoho nezaujíma
   const periods = periodsUpToNow();
+  const ziaci = allStudents();
 
-  // prázdne skupiny do prehľadu nepatria — len by zavadzali
-  // žiaka vypisujeme pod hlavnou skupinou — inak by bol v tabuľke dvakrát
-  const skupiny = sortedGroups()
-    .map((g) => ({ g, ziaci: studentsOfGroup(g.id).filter((s) => primaryGroupId(s) === g.id) }))
-    .filter(({ ziaci }) => ziaci.length);
-
-  if (!skupiny.length) {
+  if (!ziaci.length) {
     return el('div.empty', {},
       el('span.empty__mark', { text: '♟' }),
       'Zatiaľ tu nie sú žiadni žiaci. Pridajte ich v záložke Žiaci.',
     );
   }
 
-  // Skupinu píšeme pod meno, nie ako samostatný riadok cez celú tabuľku —
-  // taký riadok pri posúvaní doprava odscrolloval a nechával prázdne pásy.
-  const viacSkupin = skupiny.length > 1;
+  const rozsah = (period) => {
+    const [y, m] = period.split('-').map(Number);
+    const posledny = new Date(y, m, 0).getDate();
+    return { from: `${period}-01`, to: `${period}-${String(posledny).padStart(2, '0')}` };
+  };
+  const ucty = new Map(periods.map((p) => [p, new Map(ziaci.map((s) => [s.id, ucetZiaka(s.id, rozsah(p))]))]));
+  const eur = (n) => (Math.round((Number(n) || 0) * 100) / 100).toString().replace('.', ',');
+
+  const spolu = periods.map((p) => {
+    let vybrane = 0; let dlh = 0;
+    for (const u of ucty.get(p).values()) { vybrane += u.vybrane; dlh += u.dlh; }
+    return { period: p, vybrane, dlh };
+  });
 
   return el('div.stack-lg', {},
     el('div.card.card--flush.tablewrap', {},
@@ -246,40 +255,50 @@ function paymentsReport() {
           el('th', { text: 'Žiak' }),
           periods.map((p) => el('th', { class: 'num', text: `${p.slice(5)}/${p.slice(2, 4)}` })),
         )),
-        el('tbody', {}, skupiny.flatMap(({ g, ziaci }) =>
+        el('tbody', {},
           ziaci.map((s) =>
             el('tr', {},
               el('td', {},
                 el('div', { text: s.name }),
-                viacSkupin ? el('div.item__sub', { text: g.name }) : null,
+                el('div.item__sub', { text: studentGroupNames(s).join(' + ') || '—' }),
               ),
               periods.map((p) => {
-                const paid = paymentStatus(s.id, p) === 'paid';
-                const future = p > periodOf(todayISO());
+                const u = ucty.get(p).get(s.id);
+                if (!u.treningov) return el('td', { class: 'num' }, el('span.tiny.faint', { text: '·' }));
                 return el('td', { class: 'num' },
                   el('span', {
-                    class: `dot dot--${future ? 'none' : paid ? 'paid' : 'unpaid'}`,
-                    title: `${s.name} · ${fmtPeriod(p)}: ${paid ? 'zaplatené' : 'nezaplatené'}`,
-                    style: { margin: '0 auto' },
+                    class: 'mono',
+                    style: { fontWeight: '600', color: u.dlh ? 'var(--red)' : 'var(--green)' },
+                    title: `${s.name} · ${fmtPeriod(p)}: ${u.zaplatenych} z ${u.treningov} tréningov`
+                      + (u.dlh ? `, dlhuje ${u.dlh} €` : ''),
+                    text: `${u.zaplatenych}/${u.treningov}`,
                   }),
                 );
               }),
             ),
           ),
-        )),
+          el('tr', { style: { borderTop: '2px solid var(--cream-line)' } },
+            el('td', {}, el('strong', { text: 'Vybraté' })),
+            spolu.map((x) => el('td', { class: 'num mono' },
+              el('div', { style: { fontWeight: '700' }, text: `${eur(x.vybrane)} €` }),
+              x.dlh ? el('div.tiny', { style: { color: 'var(--red)' }, text: `−${eur(x.dlh)}` }) : null,
+            )),
+          ),
+        ),
       ),
     ),
-    el('div.card.row.small.muted', { style: { gap: '16px' } },
-      el('span.row', { style: { gap: '6px' } }, el('span.dot.dot--paid'), 'zaplatené'),
-      el('span.row', { style: { gap: '6px' } }, el('span.dot.dot--unpaid'), 'nezaplatené'),
-    ),
+    el('p.tiny.faint', { style: { margin: '0 2px' },
+      text: 'V bunke je zaplatené / odtrénované za daný mesiac. Červené = niečo chýba, bodka = v tom mesiaci nebol.' }),
     el('button.btn.btn--ghost.btn--block', {
       text: '⤓ Export histórie platieb do CSV',
       onclick: () => {
-        const rows = [['Skupiny', 'Žiak', ...periods.map(fmtPeriod)]];
-        for (const s of allStudents()) {
-          rows.push([studentGroupNames(s).join(' + '), s.name,
-            ...periods.map((p) => (paymentStatus(s.id, p) === 'paid' ? 'zaplatené' : 'nezaplatené'))]);
+        const rows = [['Skupiny', 'Žiak', 'Mesiac', 'Tréningov', 'Zaplatených', 'Vybraté €', 'Dlhuje €']];
+        for (const s of ziaci) {
+          for (const p of periods) {
+            const u = ucty.get(p).get(s.id);
+            if (!u.treningov) continue;
+            rows.push([studentGroupNames(s).join(' + '), s.name, p, u.treningov, u.zaplatenych, u.vybrane, u.dlh]);
+          }
         }
         downloadCSV(`platby-historia-${todayISO()}.csv`, rows);
         toast('CSV stiahnuté');

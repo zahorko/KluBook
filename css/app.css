@@ -276,12 +276,26 @@ a { color: var(--terracotta); }
 /* ---------- attendance list ---------- */
 .att-list { display: grid; gap: 8px; }
 .att {
-  appearance: none; cursor: pointer; width: 100%; text-align: left;
-  display: flex; align-items: center; gap: 12px;
-  padding: 12px 14px; border-radius: var(--r-md);
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 10px 0 0; border-radius: var(--r-md);
   background: var(--white); border: 1px solid var(--cream-line);
   transition: background .12s ease, border-color .12s ease;
 }
+/* Dochádzka a platba sú dve samostatné tlačidlá v jednom riadku — pri
+   tréningu sa ťuká rýchlo a omyl medzi nimi by mrzel. */
+.att__hlavne {
+  appearance: none; border: 0; background: none; cursor: pointer;
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  flex: 1; min-width: 0; padding: 12px 4px 12px 14px;
+}
+.att__euro {
+  appearance: none; cursor: pointer; flex: none;
+  min-width: 58px; padding: 8px 10px; border-radius: var(--r-full);
+  font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+  background: var(--red-l); color: var(--red); border: 1px solid transparent;
+}
+.att__euro--paid { background: var(--green-l); color: var(--green); }
+.att__euro:disabled { opacity: .35; cursor: default; }
 .att__name { font-weight: 500; }
 .att__mark {
   width: 32px; height: 32px; border-radius: var(--r-full); flex: none;

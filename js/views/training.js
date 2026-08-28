@@ -11,12 +11,16 @@ import {
   addManualSession, deleteSession, studentsOfGroup, attendanceOfSession, setAttendance,
   sessionRoster, pridatelniDoTreningu, studentGroupNames, stavHraca, gamifikacia,
   removeAttendance,
-  paymentStatus, durationMinutes, todayISO, nowHM, periodOf, sessionsInRange, updateSession,
+  durationMinutes, todayISO, nowHM, periodOf, sessionsInRange, updateSession,
+  studentFee, jeZaplatene, toggleTrainingPaid, vybraneZaTrening,
   droppingStudents, markContacted, currentTrainer,
   todaysSchedule, missingSessions, markScheduleSkipped, DNI,
 } from '../store.js';
 import { go, refresh } from '../router.js';
 import { contactSheet, telHref, maKontakt, textVymeskavanie } from '../contact.js';
+
+/** Sumy bez zbytočných desatinných miest: 5 €, nie 5.00 €. */
+const eur = (n) => (Math.round((Number(n) || 0) * 100) / 100).toString().replace('.', ',');
 
 let clockTimer = null;
 export function stopClock() { clearInterval(clockTimer); clockTimer = null; }
@@ -406,6 +410,7 @@ export function renderSession(root, trainer, sessionId) {
 
   const period = periodOf(session.date);
   const counter = el('span.tag');
+  const pokladnica = el('span.tag');
   const listBox = el('div.att-list');
 
   const paint = () => {
@@ -414,7 +419,11 @@ export function renderSession(root, trainer, sessionId) {
     const att = attendanceOfSession(session.id);
     const map = new Map(att.map((a) => [a.studentId, a]));
     const present = students.filter((s) => map.get(s.id)?.present).length;
+    const kasa = vybraneZaTrening(session.id);
     counter.textContent = `${present}/${students.length} prítomných`;
+    pokladnica.textContent = kasa.mali
+      ? `${eur(kasa.vybrane)} € vybraté · ${kasa.zaplatili}/${kasa.mali}`
+      : 'zatiaľ nikto';
 
     mount(listBox, 
       students.length === 0
@@ -424,20 +433,36 @@ export function renderSession(root, trainer, sessionId) {
         : students.map((s) => {
           const rec = map.get(s.id);
           const state = rec ? (rec.present ? 'present' : 'absent') : 'none';
-          const pay = paymentStatus(s.id, period);
-          return el('button', {
+          const zaplatil = Boolean(rec?.paid);
+          const cena = studentFee(s);
+
+          return el('div', {
             class: `att${state === 'present' ? ' att--present' : state === 'absent' ? ' att--absent' : ''}`,
-            onclick: () => {
-              zapisSDochadzkou(session.id, s, !(rec?.present ?? false));
-              paint();
-            },
           },
-            el('span', { class: `dot dot--${pay === 'paid' ? 'paid' : 'unpaid'}`, title: pay === 'paid' ? 'Zaplatené' : 'Nezaplatené' }),
-            el('span.grow', {},
-              el('div.att__name', { text: s.name }),
-              pay === 'paid' ? null : el('div.tiny', { style: { color: 'var(--red)' }, text: 'nezaplatené' }),
+            el('button.att__hlavne', {
+              onclick: () => { zapisSDochadzkou(session.id, s, !(rec?.present ?? false)); paint(); },
+            },
+              el('span.grow', {},
+                el('div.att__name', { text: s.name }),
+                state === 'present' && !zaplatil
+                  ? el('div.tiny', { style: { color: 'var(--red)' }, text: `dlhuje ${eur(cena)} €` })
+                  : null,
+              ),
+              el('span.att__mark', { text: state === 'present' ? '✓' : state === 'absent' ? '✕' : '–' }),
             ),
-            el('span.att__mark', { text: state === 'present' ? '✓' : state === 'absent' ? '✕' : '–' }),
+            // platí sa len za odtrénovanú hodinu — kto nebol, nemá čo platiť
+            el('button', {
+              class: `att__euro${zaplatil ? ' att__euro--paid' : ''}`,
+              disabled: state !== 'present',
+              title: state !== 'present'
+                ? 'Platí sa len za tréning, na ktorom bol'
+                : (zaplatil ? 'Zaplatené — ťuknutím vezmete späť' : `Zapísať platbu ${eur(cena)} €`),
+              text: zaplatil ? `✓ ${eur(cena)}` : `${eur(cena)} €`,
+              onclick: () => {
+                toggleTrainingPaid(session.id, s.id);
+                paint();
+              },
+            }),
           );
         }),
     );
@@ -445,13 +470,31 @@ export function renderSession(root, trainer, sessionId) {
 
   const markAll = (present) => {
     const postupy = [];
+    let zrusenychPlatieb = 0;
     for (const s of sessionRoster(session)) {
+      if (!present && jeZaplatene(session.id, s.id)) zrusenychPlatieb += 1;
       const p = zapisSDochadzkou(session.id, s, present, { ticho: true });
       if (p) postupy.push(p);
     }
     paint();
-    if (postupy.length) oznamPostupy(postupy);
-    else toast(present ? 'Všetci označení ako prítomní' : 'Všetci označení ako neprítomní');
+    if (zrusenychPlatieb) {
+      toast(`Všetci neprítomní — zrušených ${zrusenychPlatieb} zapísaných platieb`);
+    } else if (postupy.length) {
+      oznamPostupy(postupy);
+    } else {
+      toast(present ? 'Všetci označení ako prítomní' : 'Všetci označení ako neprítomní');
+    }
+  };
+
+  /** Keď peniaze vyberá tréner naraz na konci — nech to nie je 15 ťuknutí. */
+  const vsetciZaplatili = () => {
+    const chybajuci = sessionRoster(session)
+      .filter((s) => attendanceOfSession(session.id).find((a) => a.studentId === s.id)?.present)
+      .filter((s) => !jeZaplatene(session.id, s.id));
+    if (!chybajuci.length) { toast('Všetci prítomní už zaplatili'); return; }
+    for (const s of chybajuci) toggleTrainingPaid(session.id, s.id);
+    paint();
+    toast(`Zapísané: ${chybajuci.length} × ${eur(studentFee(chybajuci[0]))} €`);
   };
 
   paint();
@@ -474,9 +517,11 @@ export function renderSession(root, trainer, sessionId) {
       ),
       el('div.row.wrap', { style: { gap: '8px' } },
         counter,
+        pokladnica,
         el('span.grow'),
         el('button.btn.btn--ghost.btn--sm', { text: 'Všetci ✓', onclick: () => markAll(true) }),
         el('button.btn.btn--ghost.btn--sm', { text: 'Všetci ✕', onclick: () => markAll(false) }),
+        el('button.btn.btn--ghost.btn--sm', { text: '€ Všetci zaplatili', onclick: () => vsetciZaplatili() }),
       ),
       session.endTime ? null : el('button.btn.btn--block', {
         text: 'Ukončiť tréning',
@@ -489,7 +534,7 @@ export function renderSession(root, trainer, sessionId) {
       el('p.tiny.faint', { style: { margin: '-4px 2px 10px' },
         text: session.endTime
           ? 'Zoznam ukazuje, kto bol na tomto tréningu zapísaný. Ťuknutím na meno prepnete prítomný / neprítomný.'
-          : 'Ťuknutím na meno prepnete prítomný / neprítomný. Bodka vľavo = stav platby za tento mesiac.' }),
+          : 'Ťuknutím na meno prepnete prítomný / neprítomný. Tlačidlom vpravo zapíšete, že za tento tréning zaplatil.' }),
       listBox,
       el('button.btn.btn--ghost.btn--block', {
         text: '＋ Upraviť zoznam žiakov',
@@ -522,7 +567,14 @@ export function renderSession(root, trainer, sessionId) {
  */
 function zapisSDochadzkou(sessionId, student, present, { ticho = false } = {}) {
   const pred = stavHraca(student.id);
+  // platba zmizne spolu s prítomnosťou — to sa musí povedať nahlas,
+  // lebo tréner tie peniaze fyzicky drží v ruke
+  const platilPred = jeZaplatene(sessionId, student.id);
   setAttendance(sessionId, student.id, present);
+  if (!present && platilPred && !ticho) {
+    toast(`${student.name}: neprítomný — zapísaná platba ${eur(studentFee(student))} € zrušená`);
+    return null;
+  }
   const po = stavHraca(student.id);
   const postup = po.level > pred.level ? { meno: student.name, level: po.level } : null;
 
@@ -610,7 +662,9 @@ function zoznamZiakovSheet(session, after) {
                   onclick: async () => {
                     const ok = await confirmSheet('Odobrať z dochádzky?',
                       `${s.name} zmizne zo zoznamu tohto tréningu. Ak tu bol a len neprišiel, `
-                      + 'nechajte ho v zozname a označte ho ako neprítomného.',
+                      + 'nechajte ho v zozname a označte ho ako neprítomného.'
+                      + (jeZaplatene(session.id, s.id)
+                        ? ` Pozor: má zapísanú platbu ${eur(studentFee(s))} €, tá zmizne tiež.` : ''),
                       { danger: true, okLabel: 'Odobrať' });
                     if (!ok) return;
                     removeAttendance(session.id, s.id);

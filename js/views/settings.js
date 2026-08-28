@@ -661,10 +661,12 @@ function clubCard() {
         value: db.settings.shortName ?? db.settings.clubName,
         onchange: (e) => { updateSettings({ shortName: e.target.value }); toast('Uložené'); refresh(); },
       })),
-      field('Mesačný poplatok (€)', el('input.input', {
+      field('Cena jedného tréningu (€)', el('input.input', {
         type: 'number', step: '0.5', value: db.settings.fee,
         onchange: (e) => { updateSettings({ fee: Number(e.target.value) || 0 }); toast('Uložené'); },
       })),
+      el('p.tiny.faint', { style: { margin: '-6px 2px 0' },
+        text: 'Platí sa za odtrénovanú hodinu. Konkrétnemu žiakovi sa dá nastaviť iná cena v jeho karte.' }),
       field('Evidencia platieb od', el('input.input', {
         type: 'month',
         value: db.settings.trackingSince ?? trackingSince(),

@@ -24,7 +24,7 @@ const KEY = 'klubook.db.v1';
 const LEGACY_KEY = '1skke.db.v1';
 const SESSION_KEY = 'klubook.demo.session';
 
-export const PERIOD_FEE_DEFAULT = 25;
+export const CENA_TRENINGU_DEFAULT = 5;
 export { isCloud };
 
 /* ---------- pomocné ---------- */
@@ -64,7 +64,7 @@ const DEFAULT_SETTINGS = {
   clubName: '1. Šachový klub Košice',
   shortName: '1. ŠK Košice',
   motto: 'Nie sme len šachový klub, sme komunita.',
-  fee: PERIOD_FEE_DEFAULT,
+  fee: CENA_TRENINGU_DEFAULT,
   // od ktorého mesiaca klub eviduje platby (prehľady nezobrazujú staršie)
   trackingSince: null,
 };
@@ -79,7 +79,6 @@ const emptyDb = () => ({
   students: [],
   sessions: [],
   attendance: [],
-  payments: [],
   schedule: [],
   events: [],
   eventResults: [],
@@ -150,23 +149,13 @@ function seedDemo() {
     active: true, skippedDates: [], createdAt: new Date().toISOString(),
   }));
 
-  const months = [];
-  for (let i = 2; i >= 0; i--) {
-    const m = new Date(today.getFullYear(), today.getMonth() - i, 1);
-    months.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`);
+  // v demo dátach je časť tréningov zaplatená, časť nie
+  for (const a of d.attendance) {
+    if (!a.present) continue;
+    a.paid = Math.random() > 0.25;
+    a.paidAmount = a.paid ? d.settings.fee : null;
   }
-  for (const st of d.students) {
-    for (const period of months) {
-      if (periodOf(st.startDate) > period) continue;
-      const paid = period === months.at(-1) ? Math.random() > 0.35 : Math.random() > 0.1;
-      d.payments.push({
-        id: uid('pay'), studentId: st.id, period,
-        status: paid ? 'paid' : 'unpaid',
-        paidDate: paid ? `${period}-0${1 + Math.floor(Math.random() * 8)}` : null,
-        amount: paid ? d.settings.fee : null, note: '',
-      });
-    }
-  }
+
   return d;
 }
 
@@ -215,7 +204,6 @@ function opravPoskodeneZaznamy() {
   });
 
   db.attendance = preved(db.attendance, 'studentId');
-  db.payments = preved(db.payments, 'studentId');
 
   saveNow();
   console.warn(`KluBook: opravených ${bezId.length} žiakov bez identifikátora, zahodených ${zahodene} osirených záznamov.`);
@@ -255,7 +243,6 @@ export async function initStore() {
     for (const s of db.students) queueUpsert('students', s);
     for (const t of db.sessions) queueUpsert('sessions', t);
     for (const a of db.attendance) queueUpsert('attendance', a);
-    for (const p of db.payments) queueUpsert('payments', p);
   }
 
   if (!isCloud()) {
@@ -294,7 +281,6 @@ export function applyServerData(data) {
   db.students = zluc('students', data.students);
   db.sessions = zluc('sessions', data.sessions);
   db.attendance = zluc('attendance', data.attendance);
-  db.payments = zluc('payments', data.payments);
   if (data.schedule) db.schedule = zluc('schedule', data.schedule);
   if (data.events) db.events = zluc('events', data.events);
   if (data.eventResults) db.eventResults = zluc('event_results', data.eventResults);
@@ -639,6 +625,14 @@ export function setAttendance(sessionId, studentId, present) {
     rec.present = present;
     rec.at = new Date().toISOString();
   }
+  /* Kto nebol, neplatí — to je celý zmysel platby za tréning. Keby tu
+     platba ostala visieť, súčty by ju prestali rátať (neprítomných
+     preskakujú) a v evidencii by ticho zmizli peniaze, ktoré tréner
+     naozaj dostal. Radšej ju zrušíme rovno, nech je stav jednoznačný. */
+  if (!present && rec.paid) {
+    rec.paid = false;
+    rec.paidAmount = null;
+  }
   sync.up('attendance', rec);
   save();
   return rec;
@@ -704,21 +698,12 @@ export function updateStudent(student) {
 
 export function deleteStudent(studentId) {
   const attIds = db.attendance.filter((a) => a.studentId === studentId).map((a) => a.id);
-  const payIds = db.payments.filter((p) => p.studentId === studentId).map((p) => p.id);
   db.students = db.students.filter((s) => s.id !== studentId);
   db.attendance = db.attendance.filter((a) => a.studentId !== studentId);
-  db.payments = db.payments.filter((p) => p.studentId !== studentId);
   sync.delMany('attendance', attIds);
-  sync.delMany('payments', payIds);
   sync.del('students', studentId);
   save();
 }
-
-/* ---------- platby ---------- */
-export const paymentFor = (studentId, period) =>
-  db.payments.find((p) => p.studentId === studentId && p.period === period) ?? null;
-
-export const paymentStatus = (studentId, period) => paymentFor(studentId, period)?.status ?? 'unpaid';
 
 /* ---------- žiaci, ktorí prestávajú chodiť ---------- */
 
@@ -1361,8 +1346,8 @@ export function markScheduleSkipped(scheduleId, date) {
     inak aktuálny mesiac. Nikdy nezobrazujeme prázdnu minulosť. */
 export function trackingSince() {
   if (db.settings.trackingSince) return db.settings.trackingSince;
-  if (db.payments.length) {
-    return db.payments.reduce((min, p) => (p.period < min ? p.period : min), db.payments[0].period);
+  if (db.sessions.length) {
+    return db.sessions.reduce((min, t) => (periodOf(t.date) < min ? periodOf(t.date) : min), periodOf(db.sessions[0].date));
   }
   return periodOf(todayISO());
 }
@@ -1383,7 +1368,12 @@ export function periodsUpToNow(from = trackingSince(), max = 18) {
   return out.slice(-max);
 }
 
-/** Očakávaný mesačný poplatok žiaka: vlastný, inak klubový. */
+/* ---------- platby za tréning ----------
+   Platí sa za odtrénovanú hodinu, nie za mesiac. Preto záznam o platbe
+   býva priamo pri dochádzke: jeden tréning, jeden žiak, jedno ťuknutie.
+   Kto neprišiel, neplatí — nemá záznam, ktorý by sa dal odkliknúť. */
+
+/** Cena jedného tréningu pre daného žiaka: vlastná, inak klubová. */
 export function studentFee(student) {
   const s = typeof student === 'string' ? studentById(student) : student;
   const vlastny = s?.monthlyFee;
@@ -1395,38 +1385,96 @@ export const hasOwnFee = (student) => {
   return s?.monthlyFee !== null && s?.monthlyFee !== undefined && s?.monthlyFee !== '';
 };
 
-/** Skutočne zaplatená suma za mesiac (0, ak nezaplatené). */
-export function paidAmount(studentId, period) {
-  const p = paymentFor(studentId, period);
-  if (!p || p.status !== 'paid') return 0;
-  return p.amount === null || p.amount === undefined ? studentFee(studentId) : Number(p.amount) || 0;
-}
+/** Záznam dochádzky = zároveň záznam platby za ten tréning. */
+export const attendanceRecord = (sessionId, studentId) =>
+  db.attendance.find((a) => a.sessionId === sessionId && a.studentId === studentId) ?? null;
 
-/* `note` nechávame nevyplnené zámerne: keď ho volajúci neposiela (napr.
-   prepnutie zaplatené/nezaplatené), poznámka ostáva. Keď pošle prázdny
-   reťazec, tréner ju naozaj vymazal — a vtedy sa vymazať musí. */
-export function setPayment(studentId, period, status, { amount = null, paidDate = null, note } = {}) {
-  let p = paymentFor(studentId, period);
-  if (!p) {
-    p = { id: uid('pay'), studentId, period, status, paidDate, amount, note: note ?? '' };
-    db.payments.push(p);
-  } else {
-    p.status = status;
-    p.paidDate = paidDate;
-    p.amount = amount;
-    if (note !== undefined) p.note = note;
-  }
-  sync.up('payments', p);
+export const jeZaplatene = (sessionId, studentId) =>
+  Boolean(attendanceRecord(sessionId, studentId)?.paid);
+
+/**
+ * Zapíše, že žiak za tento tréning zaplatil (alebo to vezme späť).
+ * Sumu ukladáme natvrdo — keď o rok zdvihnete cenu, staré tréningy
+ * musia ostať zapísané za toľko, koľko sa vtedy naozaj vybralo.
+ */
+export function setTrainingPaid(sessionId, studentId, paid, suma = null) {
+  const rec = attendanceRecord(sessionId, studentId);
+  if (!rec) return null;
+  rec.paid = Boolean(paid);
+  rec.paidAmount = paid ? (suma ?? studentFee(studentId)) : null;
+  sync.up('attendance', rec);
   save();
-  return p;
+  return rec;
 }
 
-export function togglePayment(studentId, period) {
-  const next = paymentStatus(studentId, period) === 'paid' ? 'unpaid' : 'paid';
-  return setPayment(studentId, period, next, {
-    amount: next === 'paid' ? studentFee(studentId) : null,
-    paidDate: next === 'paid' ? todayISO() : null,
-  });
+export function toggleTrainingPaid(sessionId, studentId) {
+  return setTrainingPaid(sessionId, studentId, !jeZaplatene(sessionId, studentId));
+}
+
+/** Koľko sa za tréning naozaj vybralo. */
+export function vybraneZaTrening(sessionId) {
+  let vybrane = 0;
+  let chyba = 0;
+  let zaplatili = 0;
+  let mali = 0;
+  for (const a of db.attendance) {
+    if (a.sessionId !== sessionId || !a.present) continue;
+    mali += 1;
+    if (a.paid) { zaplatili += 1; vybrane += Number(a.paidAmount ?? studentFee(a.studentId)) || 0; }
+    else chyba += studentFee(a.studentId);
+  }
+  return { vybrane, chyba, zaplatili, mali };
+}
+
+/**
+ * Účet jedného žiaka: za koľko tréningov mal zaplatiť, koľko zaplatil
+ * a koľko dlhuje. Berieme len tréningy, na ktorých naozaj bol.
+ */
+export function ucetZiaka(studentId, { from = null, to = null } = {}) {
+  const datum = new Map(db.sessions.map((t) => [t.id, t.date]));
+  const vRozsahu = (d) => Boolean(d) && (!from || d >= from) && (!to || d <= to);
+  let treningov = 0;
+  let zaplatenych = 0;
+  let vybrane = 0;
+  let dlh = 0;
+  for (const a of db.attendance) {
+    if (a.studentId !== studentId || !a.present || !vRozsahu(datum.get(a.sessionId))) continue;
+    treningov += 1;
+    if (a.paid) { zaplatenych += 1; vybrane += Number(a.paidAmount ?? studentFee(studentId)) || 0; }
+    else dlh += studentFee(studentId);
+  }
+  return { treningov, zaplatenych, nezaplatenych: treningov - zaplatenych, vybrane, dlh };
+}
+
+/** Tréningy jedného žiaka aj so stavom platby — pre jeho kartu. */
+export function platbyZiaka(studentId, { from = null, to = null } = {}) {
+  return db.attendance
+    .filter((a) => a.studentId === studentId && a.present)
+    .map((a) => ({ zaznam: a, trening: db.sessions.find((t) => t.id === a.sessionId) }))
+    .filter((x) => x.trening && (!from || x.trening.date >= from) && (!to || x.trening.date <= to))
+    .sort((a, b) => b.trening.date.localeCompare(a.trening.date));
+}
+
+/** Kto dlhuje — zoradené od najväčšieho dlhu. */
+export function dlznici({ from = null, to = null } = {}) {
+  return allStudents()
+    .map((s) => ({ student: s, ...ucetZiaka(s.id, { from, to }) }))
+    .filter((x) => x.dlh > 0)
+    .sort((a, b) => b.dlh - a.dlh || a.student.name.localeCompare(b.student.name, 'sk'));
+}
+
+/** Súhrn za obdobie — čo sa vybralo a čo chýba. */
+export function pokladna({ from = null, to = null } = {}) {
+  let vybrane = 0;
+  let dlh = 0;
+  let treningov = 0;
+  let zaplatenych = 0;
+  for (const s of allStudents()) {
+    const u = ucetZiaka(s.id, { from, to });
+    vybrane += u.vybrane; dlh += u.dlh;
+    treningov += u.treningov; zaplatenych += u.zaplatenych;
+  }
+  return { vybrane, dlh, treningov, zaplatenych, nezaplatenych: treningov - zaplatenych };
 }
 
 /* ---------- nastavenia klubu a tréneri ---------- */
@@ -1451,7 +1499,7 @@ export function importJSON(text) {
   // inak by appka spadla hneď pri prvom otvorení rozvrhu či podujatí
   parsed.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
   parsed.groups = parsed.groups?.length ? parsed.groups : GROUPS;
-  for (const k of ['trainers', 'sessions', 'attendance', 'payments', 'schedule', 'events',
+  for (const k of ['trainers', 'sessions', 'attendance', 'schedule', 'events',
     'eventResults', 'shopItems', 'purchases']) {
     if (!Array.isArray(parsed[k])) parsed[k] = [];
   }
@@ -1481,7 +1529,6 @@ export function importJSONToCloud(text) {
     ['students', db.students],
     ['sessions', db.sessions],
     ['attendance', db.attendance],
-    ['payments', db.payments],
     ['schedule', db.schedule],
     ['events', db.events],
     ['event_results', db.eventResults],
@@ -1506,7 +1553,6 @@ export function resetAll() {
 export function clearDemoData() {
   db.sessions = [];
   db.attendance = [];
-  db.payments = [];
   db.students = [];
   db.demo = false;
   saveNow();

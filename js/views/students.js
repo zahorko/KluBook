@@ -7,8 +7,8 @@ import {
 } from '../ui.js';
 import {
   db, sortedGroups, groupName, studentsOfGroup, upsertStudent, deleteStudent, studentById,
-  paymentStatus, togglePayment, todayISO, periodOf, updateStudent,
-  studentFee, hasOwnFee, periodsUpToNow, trackingSince,
+  todayISO, periodOf, updateStudent,
+  studentFee, hasOwnFee, ucetZiaka, platbyZiaka, toggleTrainingPaid,
   absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer, trainsWithClub, everyone,
   studentGroupIds, studentGroupNames, durationMinutes,
   studentEvents, studentPointsSummary, studentEventsOutsideSeason, seasonRange, DRUHY_PODUJATI,
@@ -47,14 +47,15 @@ export function renderStudents(root) {
     const archivovani = students.filter((s) => !s.active);
 
     const riadok = (s) => {
-      const pay = paymentStatus(s.id, period);
-      const vymeska = absenceStreak(s.id).count;
-      // kto nechodí na tréningy, neplatí členské — nesmie svietiť ako dlžník
+      // kto nechodí na tréningy, neplatí nič — nesmie svietiť ako dlžník
       const platiClenske = trainsWithClub(s);
+      const dlh = platiClenske ? ucetZiaka(s.id).dlh : 0;
+      const vymeska = absenceStreak(s.id).count;
       return el('button.item', { onclick: () => go(`/ziaci/${s.id}`) },
         el('span', {
-          class: `dot dot--${!platiClenske ? 'none' : pay === 'paid' ? 'paid' : 'unpaid'}`,
-          title: platiClenske ? '' : 'Neplatí členské — nechodí na tréningy',
+          class: `dot dot--${!platiClenske ? 'none' : dlh ? 'unpaid' : 'paid'}`,
+          title: !platiClenske ? 'Neplatí — nechodí na tréningy'
+            : (dlh ? `Dlhuje ${dlh} €` : 'Nič nedlhuje'),
         }),
         el('span.grow', {},
           el('div.item__title', {}, s.name,
@@ -241,9 +242,6 @@ export function renderStudentDetail(root, studentId) {
   const s = studentById(studentId);
   if (!s) { mount(root, el('div.empty', { text: 'Žiak sa nenašiel.' })); return; }
 
-  // od nástupu žiaka (nie skôr, než klub eviduje platby) po dnešok
-  const zaciatok = [periodOf(s.startDate), trackingSince()].sort().at(-1);
-  const periods = periodsUpToNow(zaciatok, 12);
   // História sa viaže na dochádzku, nie na aktuálnu skupinu — inak by žiakovi
   // po prechode medzi skupinami zmizli všetky staršie tréningy aj percento účasti.
   const attMap = new Map(db.attendance.filter((a) => a.studentId === s.id).map((a) => [a.sessionId, a]));
@@ -253,19 +251,35 @@ export function renderStudentDetail(root, studentId) {
   const presentCount = relevant.filter((x) => attMap.get(x.id).present).length;
   const rate = relevant.length ? Math.round((presentCount / relevant.length) * 100) : 0;
 
-  const payBox = el('div.row.wrap', { style: { gap: '6px' } });
+  const payBox = el('div.stack');
   const paintPay = () => {
-    mount(payBox, 
-      periods.map((p) => {
-        const st = paymentStatus(s.id, p);
-        return el('button', {
-          class: `paycell paycell--${st === 'paid' ? 'paid' : 'unpaid'}`,
-          style: { minWidth: '58px' },
-          text: `${p.slice(5)}/${p.slice(2, 4)}`,
-          title: `${fmtPeriod(p)} — ${st === 'paid' ? 'zaplatené' : 'nezaplatené'} (ťuknutím prepnete)`,
-          onclick: () => { togglePayment(s.id, p); paintPay(); },
-        });
-      }),
+    const u = ucetZiaka(s.id);
+    const zoznam = platbyZiaka(s.id).slice(0, 14);
+    mount(payBox,
+      el('div.stats', {},
+        el('div.stat', {}, el('div.stat__num', { text: `${u.zaplatenych}/${u.treningov}` }),
+          el('div.stat__lab', { text: 'zaplatených' })),
+        el('div.stat', {}, el('div.stat__num', { text: `${u.vybrane} €` }), el('div.stat__lab', { text: 'zaplatil spolu' })),
+        el('div.stat', {},
+          el('div.stat__num', { style: { color: u.dlh ? 'var(--red)' : 'inherit' }, text: `${u.dlh} €` }),
+          el('div.stat__lab', { text: 'dlhuje' })),
+      ),
+      zoznam.length === 0
+        ? el('p.small.muted', { style: { margin: 0 }, text: 'Zatiaľ nebol na žiadnom tréningu.' })
+        : el('div.card.card--flush.list', {}, zoznam.map(({ zaznam, trening }) =>
+          el('button.item', {
+            onclick: () => { toggleTrainingPaid(trening.id, s.id); paintPay(); },
+          },
+            el('span.grow', {},
+              el('div.item__title', { text: `${fmtDayShort(trening.date)} · ${groupName(trening.groupId)}` }),
+              trening.note ? el('div.item__sub', { text: trening.note }) : null,
+            ),
+            el('span', {
+              class: `att__euro${zaznam.paid ? ' att__euro--paid' : ''}`,
+              text: zaznam.paid ? `✓ ${zaznam.paidAmount ?? studentFee(s)}` : `${studentFee(s)} €`,
+            }),
+          ),
+        )),
     );
   };
   paintPay();
@@ -290,7 +304,7 @@ export function renderStudentDetail(root, studentId) {
         el('div', { text: `V klube od: ${fmtDate(s.startDate)}` }),
         trainsWithClub(s)
           ? el('div', {
-            text: `Mesačný poplatok: ${studentFee(s)} €${hasOwnFee(s) ? ' (vlastný)' : ' (klubový)'}`,
+            text: `Cena tréningu: ${studentFee(s)} €${hasOwnFee(s) ? ' (vlastná)' : ' (klubová)'}`,
           })
           : null,
         s.note ? el('div', { style: { marginTop: '6px', fontStyle: 'italic' }, text: s.note }) : null,
@@ -357,10 +371,11 @@ export function renderStudentDetail(root, studentId) {
 
     trainsWithClub(s)
       ? el('div', {},
-        el('h2.section-title', { text: 'Platby' }),
-        el('div.card', {},
+        el('h2.section-title', { text: 'Platby za tréningy' }),
+        el('div.card.stack', {},
           payBox,
-          el('p.tiny.faint', { style: { marginBottom: 0 }, text: 'Ťuknutím prepnete zaplatené / nezaplatené.' }),
+          el('p.tiny.faint', { style: { marginBottom: 0 },
+            text: 'Ťuknutím na tréning prepnete, či zaň zaplatil. Platí sa len za tréningy, na ktorých bol.' }),
         ),
       )
       : null,
@@ -448,7 +463,7 @@ export function studentSheet(student, defaultGroupId) {
     const fee = el('input.input', {
       type: 'number', step: '0.5', min: '0',
       value: student?.monthlyFee ?? '',
-      placeholder: `klubový poplatok (${db.settings.fee} €)`,
+      placeholder: `klubová cena (${db.settings.fee} €)`,
     });
     const note = el('textarea.textarea', { placeholder: 'napr. hrá za mládežnícky tím' }, student?.note ?? '');
 
@@ -469,9 +484,9 @@ export function studentSheet(student, defaultGroupId) {
       skupinyBox,
       field('Kontaktná osoba', contactName),
       el('div.grid2', {}, field('Telefón', phone), field('E-mail', email)),
-      el('div.grid2', {}, field('Dátum nástupu', start), field('Mesačný poplatok (€)', fee)),
+      el('div.grid2', {}, field('Dátum nástupu', start), field('Cena tréningu (€)', fee)),
       el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
-        text: `Prázdne = platí klubový poplatok ${db.settings.fee} €. Vyplňte, len ak má tento žiak inú sumu.` }),
+        text: `Prázdne = platí klubovú cenu ${db.settings.fee} € za tréning. Vyplňte, len ak má tento žiak inú.` }),
       field('Poznámka', note),
       el('button.btn.btn--block', {
         text: isNew ? 'Pridať žiaka' : 'Uložiť zmeny',
