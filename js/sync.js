@@ -151,6 +151,10 @@ const MAPPERS = {
       at: r.at, delivered: Boolean(r.delivered), note: r.note || '',
     }),
   },
+  absences: {
+    toRow: (a) => ({ id: a.id, student_id: a.studentId, date: a.date, note: a.note || '' }),
+    fromRow: (r) => ({ id: r.id, studentId: r.student_id, date: r.date, note: r.note || '', createdAt: r.created_at }),
+  },
   club_settings: {
     toRow: (s) => ({
       id: 1, club_name: s.clubName, short_name: s.shortName, motto: s.motto,
@@ -171,12 +175,13 @@ const MAPPERS = {
 
 /* Poradie zápisu rešpektuje väzby (tréning musí existovať pred dochádzkou). */
 const PUSH_ORDER = ['club_settings', 'trainers', 'groups', 'schedule', 'students', 'sessions',
-  'attendance', 'events', 'event_results', 'shop_items', 'purchases'];
+  'attendance', 'events', 'event_results', 'shop_items', 'purchases', 'absences'];
 
 /* Tabuľky, kde záznam poznáme aj podľa inej dvojice stĺpcov než id —
    keby dvaja tréneri zapísali to isté z dvoch zariadení. */
 const CONFLICT_KEYS = {
   attendance: 'session_id,student_id',
+  absences: 'student_id,date',
   event_results: 'event_id,student_id',
 };
 
@@ -454,7 +459,7 @@ export async function pull() {
   emit();
   try {
     const [trainers, groups, students, sessions, attendance, settings, schedule,
-      events, eventResults, shopItems, purchases] = await Promise.all([
+      events, eventResults, shopItems, purchases, absences] = await Promise.all([
       selectAll('trainers'),
       selectAll('groups'),
       selectAll('students'),
@@ -477,6 +482,7 @@ export async function pull() {
         return [];
       }),
       selectAll('purchases').catch(() => []),
+      selectAll('absences').catch(() => []),
     ]);
 
     const map = (table, rows) => (rows ?? []).map(MAPPERS[table].fromRow);
@@ -491,6 +497,7 @@ export async function pull() {
       eventResults: map('event_results', eventResults),
       shopItems: map('shop_items', shopItems),
       purchases: map('purchases', purchases),
+      absences: map('absences', absences),
       settings: settings?.[0] ? MAPPERS.club_settings.fromRow(settings[0]) : null,
     };
 

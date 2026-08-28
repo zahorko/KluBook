@@ -9,6 +9,7 @@ import {
   db, sortedGroups, groupName, studentsOfGroup, upsertStudent, deleteStudent, studentById,
   todayISO, periodOf, updateStudent,
   studentFee, hasOwnFee, ucetZiaka, platbyZiaka, toggleTrainingPaid,
+  ospravedlnit, zrusitOspravedlnenie, absencie,
   absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer, trainsWithClub, everyone,
   studentGroupIds, studentGroupNames, durationMinutes,
   studentEvents, studentPointsSummary, studentEventsOutsideSeason, seasonRange, DRUHY_PODUJATI,
@@ -260,6 +261,68 @@ function obchodSheet(s, profil) {
   });
 }
 
+
+/**
+ * Vopred ohlásené neúčasti. Rodič sa ozve v stredu, tréner to zapíše sem
+ * a vo štvrtok už nemusí nič pamätať — dieťa bude v hárku rovno neprítomné
+ * a nič sa mu neúčtuje.
+ */
+function ospravedlneniaSekcia(s) {
+  const box = el('div.stack');
+  const vykresli = () => {
+    const dnes = todayISO();
+    const moje = absencie()
+      .filter((a) => a.studentId === s.id && a.date >= dnes)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    mount(box,
+      moje.length === 0
+        ? el('p.small.muted', { style: { margin: 0 }, text: 'Žiadna ohlásená neúčasť.' })
+        : el('div.card.card--flush.list', {}, moje.map((a) =>
+          el('div.item', {},
+            el('span.grow', {},
+              el('div.item__title', { text: fmtDate(a.date) }),
+              a.note ? el('div.item__sub', { text: a.note }) : null,
+            ),
+            el('button.iconbtn', {
+              text: '✕', title: 'Zrušiť ospravedlnenie',
+              onclick: () => { zrusitOspravedlnenie(s.id, a.date); toast('Zrušené'); vykresli(); },
+            }),
+          ),
+        )),
+      el('button.btn.btn--ghost.btn--block', {
+        text: '＋ Ohlásiť neúčasť',
+        onclick: () => ospravedlnitSheet(s, vykresli),
+      }),
+    );
+  };
+  vykresli();
+  return el('div', {}, el('h2.section-title', { text: 'Ohlásené neúčasti' }), el('div.card.stack', {}, box));
+}
+
+function ospravedlnitSheet(s, hotovo) {
+  sheet(`Neúčasť — ${s.name}`, (body, close) => {
+    const datum = el('input.input', { type: 'date', value: todayISO() });
+    const poznamka = textInput({ placeholder: 'napr. choroba, škola v prírode' });
+    mount(body,
+      el('p.small.muted', { style: { margin: 0 },
+        text: 'V ten deň bude v dochádzke rovno ako neprítomný a nič sa mu neúčtuje. Ak nakoniec príde, stačí ho v hárku prepnúť.' }),
+      field('Dátum', datum),
+      field('Dôvod (nepovinné)', poznamka),
+      el('button.btn.btn--block', {
+        text: 'Ohlásiť neúčasť',
+        style: { marginTop: '8px' },
+        onclick: () => {
+          if (!datum.value) { toast('Vyberte dátum'); return; }
+          ospravedlnit(s.id, datum.value, poznamka.value.trim());
+          close();
+          toast(`${s.name}: neúčasť ${fmtDate(datum.value)} zapísaná`);
+          hotovo?.();
+        },
+      }),
+    );
+  });
+}
+
 /* ---------------- detail žiaka ---------------- */
 export function renderStudentDetail(root, studentId) {
   const s = studentById(studentId);
@@ -391,6 +454,8 @@ export function renderStudentDetail(root, studentId) {
 
     gamifikaciaSekcia(s),
     eventsSection(s),
+
+    trainsWithClub(s) ? ospravedlneniaSekcia(s) : null,
 
     trainsWithClub(s)
       ? el('div', {},

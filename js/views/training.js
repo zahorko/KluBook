@@ -13,6 +13,7 @@ import {
   removeAttendance,
   durationMinutes, todayISO, nowHM, periodOf, sessionsInRange, updateSession,
   studentFee, jeZaplatene, toggleTrainingPaid, vybraneZaTrening,
+  nadchadzajuceAbsencie, absenciaZiaka,
   droppingStudents, markContacted, currentTrainer,
   todaysSchedule, missingSessions, markScheduleSkipped, DNI,
 } from '../store.js';
@@ -42,6 +43,9 @@ export function renderTraining(root, trainer) {
 
   if (live) box.append(liveCard(live, trainer));
   else box.append(startCard(trainer));
+
+  const ohlasene = nadchadzajuceAbsencie(7);
+  if (ohlasene.length) box.append(absencieCard(ohlasene));
 
   const odchadzajuci = droppingStudents();
   if (odchadzajuci.length) box.append(droppingCard(odchadzajuci));
@@ -118,6 +122,28 @@ function missingCard(zoznam, trainer) {
         ),
       ),
     ),
+  );
+}
+
+
+/** Kto sa vopred ospravedlnil — nech to trénerovi nevypadne z hlavy. */
+function absencieCard(zoznam) {
+  const dnes = todayISO();
+  return el('div', {},
+    el('h2.section-title', { text: 'Ohlásené neúčasti' }),
+    el('div.card.card--flush.list', {}, zoznam.slice(0, 8).map((a) =>
+      el('button.item', { onclick: () => go(`/ziaci/${a.student.id}`) },
+        el('span.grow', {},
+          el('div.item__title', { text: a.student.name }),
+          el('div.item__sub', { text: a.note || 'bez dôvodu' }),
+        ),
+        el('span.tag', {
+          text: a.date === dnes ? 'dnes' : fmtDayShort(a.date),
+          style: a.date === dnes ? { background: 'var(--terracotta-l)', color: 'var(--terracotta-d)' } : {},
+        }),
+        el('span.chev', { text: '›' }),
+      ),
+    )),
   );
 }
 
@@ -435,6 +461,7 @@ export function renderSession(root, trainer, sessionId) {
           const state = rec ? (rec.present ? 'present' : 'absent') : 'none';
           const zaplatil = Boolean(rec?.paid);
           const cena = studentFee(s);
+          const ospravedlnenie = absenciaZiaka(s.id, session.date);
 
           return el('div', {
             class: `att${state === 'present' ? ' att--present' : state === 'absent' ? ' att--absent' : ''}`,
@@ -446,7 +473,9 @@ export function renderSession(root, trainer, sessionId) {
                 el('div.att__name', { text: s.name }),
                 state === 'present' && !zaplatil
                   ? el('div.tiny', { style: { color: 'var(--red)' }, text: `dlhuje ${eur(cena)} €` })
-                  : null,
+                  : (ospravedlnenie
+                    ? el('div.tiny.faint', { text: `ospravedlnený${ospravedlnenie.note ? ` · ${ospravedlnenie.note}` : ''}` })
+                    : null),
               ),
               el('span.att__mark', { text: state === 'present' ? '✓' : state === 'absent' ? '✕' : '–' }),
             ),

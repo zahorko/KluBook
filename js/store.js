@@ -84,6 +84,7 @@ const emptyDb = () => ({
   eventResults: [],
   shopItems: [],
   purchases: [],
+  absences: [],
 });
 
 /* ---------- demo dáta ---------- */
@@ -173,6 +174,7 @@ function load() {
         parsed.eventResults ??= [];
         parsed.shopItems ??= [];
         parsed.purchases ??= [];
+        parsed.absences ??= [];
         return parsed;
       }
     } catch { /* poškodené dáta preskočíme */ }
@@ -286,6 +288,7 @@ export function applyServerData(data) {
   if (data.eventResults) db.eventResults = zluc('event_results', data.eventResults);
   if (data.shopItems) db.shopItems = zluc('shop_items', data.shopItems);
   if (data.purchases) db.purchases = zluc('purchases', data.purchases);
+  if (data.absences) db.absences = zluc('absences', data.absences);
   if (data.settings) db.settings = { ...DEFAULT_SETTINGS, ...data.settings };
   db.demo = false;
   saveNow();
@@ -560,10 +563,12 @@ export function startSession({ trainerId, groupId, date = todayISO(), startTime 
   db.sessions.push(session);
   sync.up('sessions', session);
 
+  const ospravedlneni = absencieNaDen(date);
   for (const s of studentsOfGroup(groupId)) {
     const rec = {
       id: uid('att'), sessionId: session.id, studentId: s.id,
-      present: true, at: new Date().toISOString(),
+      // kto sa vopred ospravedlnil, nezačína ako prítomný
+      present: !ospravedlneni.has(s.id), at: new Date().toISOString(),
     };
     db.attendance.push(rec);
     sync.up('attendance', rec);
@@ -589,11 +594,12 @@ export function addManualSession({ trainerId, groupId, date, startTime, endTime,
   db.sessions.push(session);
   sync.up('sessions', session);
 
+  const ospravedlneniRucne = absencieNaDen(date);
   for (const s of studentsOfGroup(groupId)) {
     if (s.startDate > date) continue;
     const rec = {
       id: uid('att'), sessionId: session.id, studentId: s.id,
-      present: true, at: new Date().toISOString(),
+      present: !ospravedlneniRucne.has(s.id), at: new Date().toISOString(),
     };
     db.attendance.push(rec);
     sync.up('attendance', rec);
@@ -702,6 +708,56 @@ export function deleteStudent(studentId) {
   db.attendance = db.attendance.filter((a) => a.studentId !== studentId);
   sync.delMany('attendance', attIds);
   sync.del('students', studentId);
+  save();
+}
+
+
+/* ---------- vopred ohlásené neúčasti ----------
+   Rodič sa ozve v stredu, že dieťa vo štvrtok nepríde. Doteraz si to tréner
+   musel pamätať do tréningu; teraz sa to zapíše a pri zakladaní tréningu sa
+   dieťa rovno označí ako neprítomné. Platba sa mu tým pádom neúčtuje. */
+
+export const absencie = () => db.absences ?? [];
+
+/** Kto sa na daný deň ospravedlnil. */
+export const absencieNaDen = (date) =>
+  new Set(absencie().filter((a) => a.date === date).map((a) => a.studentId));
+
+export const absenciaZiaka = (studentId, date) =>
+  absencie().find((a) => a.studentId === studentId && a.date === date) ?? null;
+
+/** Ospravedlnenia od dneška dopredu — to je to, čo trénera zaujíma. */
+export function nadchadzajuceAbsencie(dni = 14) {
+  const dnes = todayISO();
+  const do_ = new Date(); do_.setDate(do_.getDate() + dni);
+  const koniec = todayISO(do_);
+  return absencie()
+    .filter((a) => a.date >= dnes && a.date <= koniec)
+    .map((a) => ({ ...a, student: studentById(a.studentId) }))
+    .filter((a) => a.student)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.student.name.localeCompare(b.student.name, 'sk'));
+}
+
+export function ospravedlnit(studentId, date, note = '') {
+  const uz = absenciaZiaka(studentId, date);
+  const zaznam = uz ?? { id: uid('abs'), studentId, date, note: '', createdAt: new Date().toISOString() };
+  zaznam.note = note;
+  if (!uz) db.absences.push(zaznam);
+  sync.up('absences', zaznam);
+
+  // keď tréning na ten deň už existuje, prepíšeme aj dochádzku
+  for (const t of db.sessions.filter((x) => x.date === date)) {
+    if (attendanceRecord(t.id, studentId)) setAttendance(t.id, studentId, false);
+  }
+  save();
+  return zaznam;
+}
+
+export function zrusitOspravedlnenie(studentId, date) {
+  const z = absenciaZiaka(studentId, date);
+  if (!z) return;
+  db.absences = db.absences.filter((a) => a.id !== z.id);
+  sync.del('absences', z.id);
   save();
 }
 
@@ -1523,7 +1579,7 @@ export function importJSON(text) {
   parsed.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
   parsed.groups = parsed.groups?.length ? parsed.groups : GROUPS;
   for (const k of ['trainers', 'sessions', 'attendance', 'schedule', 'events',
-    'eventResults', 'shopItems', 'purchases']) {
+    'eventResults', 'shopItems', 'purchases', 'absences']) {
     if (!Array.isArray(parsed[k])) parsed[k] = [];
   }
   for (const k of Object.keys(db)) delete db[k];
@@ -1557,6 +1613,7 @@ export function importJSONToCloud(text) {
     ['event_results', db.eventResults],
     ['shop_items', db.shopItems],
     ['purchases', db.purchases],
+    ['absences', db.absences],
   ];
 
   let pocet = 0;
