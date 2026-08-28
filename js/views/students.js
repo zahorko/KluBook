@@ -162,6 +162,29 @@ function gamifikaciaSekcia(s) {
         el('div.stat', {}, el('div.stat__num', { text: String(p.goldZarobene) }),
           el('div.stat__lab', { text: 'goldov zarobených' })),
       ),
+      // séria je najsilnejší ťahák na pravidelnosť — nech ju dieťa vidí
+      el('div.row.row--between', {
+        style: {
+          background: p.sezona.seria ? 'var(--terracotta-l)' : 'var(--cream-deep)',
+          borderRadius: 'var(--r-md)', padding: '10px 12px',
+        },
+      },
+        el('span.grow', {},
+          el('div', {
+            style: { fontWeight: '600', color: p.sezona.seria ? 'var(--terracotta-d)' : 'var(--ink-soft)' },
+            text: p.sezona.seria
+              ? `🔥 ${p.sezona.seria} ${sklonuj(p.sezona.seria, 'tréning', 'tréningy', 'tréningov')} po sebe`
+              : 'Séria zatiaľ nebeží',
+          }),
+          el('div.tiny.faint', {
+            text: p.sezona.seria
+              ? `Do ${g.seriaDlzka}. chýba ${(g.seriaDlzka - (p.sezona.seria % g.seriaDlzka)) % g.seriaDlzka || g.seriaDlzka}`
+                + ` — potom +${g.seriaBonus} XP`
+              : `${g.seriaDlzka} tréningov po sebe = +${g.seriaBonus} XP navyše`,
+          }),
+        ),
+        p.sezona.serie ? el('span.tag', { text: `${p.sezona.serie}× séria` }) : null,
+      ),
       el('button.btn.btn--block', {
         text: '💰 Vybrať odmenu z obchodu',
         onclick: () => obchodSheet(s, p),
@@ -276,7 +299,7 @@ export function renderStudentDetail(root, studentId) {
             ),
             el('span', {
               class: `att__euro${zaznam.paid ? ' att__euro--paid' : ''}`,
-              text: zaznam.paid ? `✓ ${zaznam.paidAmount ?? studentFee(s)}` : `${studentFee(s)} €`,
+              text: zaznam.paid ? `✓ ${zaznam.paidAmount ?? studentFee(s)} €` : `${studentFee(s)} €`,
             }),
           ),
         )),

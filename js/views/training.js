@@ -457,7 +457,7 @@ export function renderSession(root, trainer, sessionId) {
               title: state !== 'present'
                 ? 'Platí sa len za tréning, na ktorom bol'
                 : (zaplatil ? 'Zaplatené — ťuknutím vezmete späť' : `Zapísať platbu ${eur(cena)} €`),
-              text: zaplatil ? `✓ ${eur(cena)}` : `${eur(cena)} €`,
+              text: zaplatil ? `✓ ${eur(cena)} €` : `${eur(cena)} €`,
               onclick: () => {
                 toggleTrainingPaid(session.id, s.id);
                 paint();

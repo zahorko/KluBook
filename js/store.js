@@ -759,10 +759,15 @@ export function markContacted(studentId, date = todayISO()) {
 
 /* Východiskové pravidlá. Dajú sa zmeniť v Nastaveniach, takže ich netreba
    trafiť napevno — po prvej sezóne sa doladia podľa skutočnosti. */
+/* Čísla sú postavené voči XP za tréning (20 XP za hodinu), aby XP zodpovedalo
+   tomu, koľko to dieťa naozaj stojí. Ligové kolo je pol dňa ≈ dva tréningy,
+   celodenný turnaj s cestovaním ≈ päť tréningov. Bez toho by sa oplatilo
+   len chodiť na tréningy a hrať by nemalo zmysel — čo je presne naopak,
+   než na čo je toto bodovanie. */
 export const DEFAULT_SCORING = {
-  liga:   { ucast: 3, vyhra: 3, remiza: 2, prehra: 1, umiestnenie: {} },
-  turnaj: { ucast: 5, vyhra: 3, remiza: 2, prehra: 1, umiestnenie: { 1: 10, 2: 7, 3: 5, 4: 3, 5: 3, 6: 3 } },
-  ine:    { ucast: 3, vyhra: 3, remiza: 2, prehra: 1, umiestnenie: {} },
+  liga:   { ucast: 30, vyhra: 15, remiza: 8, prehra: 4, umiestnenie: {} },
+  turnaj: { ucast: 60, vyhra: 10, remiza: 5, prehra: 2, umiestnenie: { 1: 120, 2: 80, 3: 50, 4: 30, 5: 30, 6: 30 } },
+  ine:    { ucast: 30, vyhra: 15, remiza: 8, prehra: 4, umiestnenie: {} },
 };
 
 export const DRUHY_PODUJATI = {
@@ -1153,6 +1158,8 @@ export const ODPORUCANA_PONUKA = [
   { name: 'Klubová nálepka', description: 'na zošit, fľašu alebo mobil', price: 30, kind: 'vec', ord: 6 },
   { name: 'Šachová kniha', description: 'podľa tvojej úrovne', price: 90, kind: 'vec', ord: 7 },
   { name: 'Klubové tričko', description: 's logom 1. ŠK Košice', price: 120, kind: 'vec', ord: 8 },
+  { name: 'Klub ti zaplatí štartovné', description: 'na turnaj podľa výberu', price: 150, kind: 'vec', ord: 9 },
+  { name: 'Príspevok na sústredenie', description: 'klub prispeje na letné sústredenie', price: 250, kind: 'vec', ord: 10 },
 ];
 
 export const shopItems = ({ includeInactive = false } = {}) =>

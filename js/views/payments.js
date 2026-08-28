@@ -142,7 +142,7 @@ function ziakSheet(student, obdobie, period) {
               ),
               el('span', {
                 class: `att__euro${zaznam.paid ? ' att__euro--paid' : ''}`,
-                text: zaznam.paid ? `✓ ${eur(zaznam.paidAmount ?? studentFee(student))}` : `${eur(studentFee(student))} €`,
+                text: zaznam.paid ? `✓ ${eur(zaznam.paidAmount ?? studentFee(student))} €` : `${eur(studentFee(student))} €`,
               }),
             ),
           )),
