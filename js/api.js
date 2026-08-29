@@ -435,9 +435,26 @@ export async function openVault(email, pin) {
 }
 
 /* ---------------- zámok ---------------- */
-/* Po dlhšej nečinnosti (alebo po ručnom zamknutí) appka pýta PIN znova. */
+/* Po dlhšej nečinnosti (alebo po ručnom zamknutí) appka pýta PIN znova.
+   Ako dlho to trvá, si každý nastaví na svojom zariadení — na klubovom
+   počítači dáva zmysel krátky čas, na vlastnom telefóne žiadny. */
 const UNLOCK_KEY = 'klubook.unlockedAt';
-const AUTO_LOCK_HOURS = 12;
+const LOCK_HOURS_KEY = 'klubook.lockHours';
+const LOCK_HOURS_DEFAULT = 12;
+
+/** 0 = nezamykať vôbec. Nenastavené musí zostať pri predvolenom —
+    Number(null) je nula, čo by ticho vyplo zámok všetkým. */
+export function lockHours() {
+  const ulozene = localStorage.getItem(LOCK_HOURS_KEY);
+  if (ulozene === null || ulozene === '') return LOCK_HOURS_DEFAULT;
+  const v = Number(ulozene);
+  return Number.isFinite(v) && v >= 0 ? v : LOCK_HOURS_DEFAULT;
+}
+
+export function setLockHours(hodin) {
+  localStorage.setItem(LOCK_HOURS_KEY, String(Math.max(0, Number(hodin) || 0)));
+  markUnlocked();
+}
 
 const markUnlocked = () => localStorage.setItem(UNLOCK_KEY, String(Date.now()));
 
@@ -452,8 +469,10 @@ export function lock() {
 export function isLocked() {
   if (!hasVault()) return false;              // bez PIN-u sa rieši heslom
   if (!session()?.refreshToken) return true;  // nie je čím pokračovať
+  const hodin = lockHours();
+  if (hodin === 0) return false;              // tréner sa spolieha na zámok zariadenia
   const at = Number(localStorage.getItem(UNLOCK_KEY) || 0);
-  return !at || Date.now() - at > AUTO_LOCK_HOURS * 3600 * 1000;
+  return !at || Date.now() - at > hodin * 3600 * 1000;
 }
 
 export const vaultEmail = () => session()?.user?.email ?? vaultAccounts()[0]?.email ?? '';

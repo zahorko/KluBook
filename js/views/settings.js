@@ -6,14 +6,14 @@ import {
   db, isCloud, saveNow, logout, initialsOf, uid, newSalt, hashPin, setDemoPin,
   exportJSON, importJSON, importJSONToCloud, resetAll, clearDemoData, todayISO,
   gamifikacia, updateGamifikacia, xpPreLevel, pridatTrenera,
-  stavElo, obnovitElo,
+  stavElo, obnovitElo, jeSpravca,
   updateSettings, updateTrainer, applyServerData, syncNow,
   setDevicePin, hasDevicePin, devicePinEmail, lockApp,
   studentById, groupName, trackingSince,
   sortedGroups, activeSchedule, upsertScheduleEntry, deleteScheduleEntry, DNI,
   scoringRules, updateScoring, recomputeAllPoints, DRUHY_PODUJATI,
 } from '../store.js';
-import { changePassword, session } from '../api.js';
+import { changePassword, session, lockHours, setLockHours, hasVault } from '../api.js';
 import {
   state as syncState, onSyncChange, resetSyncState, retryFailed, clearFailed, clearSchemaWarning,
 } from '../sync.js';
@@ -93,6 +93,25 @@ function accountCard(trainer) {
           },
         })
         : null,
+      isCloud() && hasVault() ? el('div', {},
+        field('Pýtať PIN pri otvorení', selectInput([
+          { value: '12', label: 'Po 12 hodinách (odporúčané)' },
+          { value: '720', label: 'Raz za mesiac' },
+          { value: '0', label: 'Nikdy — mám zamknuté zariadenie' },
+        ], {
+          value: String(lockHours()),
+          onchange: (e) => {
+            setLockHours(e.target.value);
+            toast(Number(e.target.value) === 0
+              ? 'PIN sa už pýtať nebude — appka sa otvorí rovno'
+              : 'Uložené');
+          },
+        })),
+        el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
+          text: 'Platí len pre toto zariadenie. Pri „Nikdy" sa appka otvorí rovno — kto vezme odomknutý '
+            + 'telefón do ruky, uvidí mená detí, kontakty aj platby. Na klubovom počítači to nechajte na 12 hodinách.' }),
+      ) : null,
+
       el('button.btn.btn--ghost.btn--block', {
         text: 'Odhlásiť sa',
         onclick: async () => {
@@ -362,20 +381,25 @@ function trainersCard() {
           el('button.item', { onclick: () => cloudTrainerSheet(t) },
             el('span.avatar.avatar--ghost', { text: t.initials }),
             el('span.grow', {},
-              el('div.item__title', { text: t.name }),
+              el('div.item__title', {}, t.name,
+                t.isAdmin ? el('span.tag', { text: 'správca', style: { marginLeft: '8px' } }) : null),
               el('div.item__sub', { text: t.active ? 'aktívny' : 'neaktívny' }),
             ),
             el('span.chev', { text: '›' }),
           ),
         ),
       ),
-      el('button.btn.btn--block', {
-        text: '＋ Pridať trénera',
-        style: { marginTop: '12px' },
-        onclick: () => novyTrenerSheet(),
-      }),
+      jeSpravca()
+        ? el('button.btn.btn--block', {
+          text: '＋ Pridať trénera',
+          style: { marginTop: '12px' },
+          onclick: () => novyTrenerSheet(),
+        })
+        : null,
       el('p.tiny.faint', { style: { margin: '10px 2px 0' },
-        text: 'Účet vznikne rovno tu. Heslo odovzdajte trénerovi osobne — pri prvom prihlásení si ho môže zmeniť.' }),
+        text: jeSpravca()
+          ? 'Účet vznikne rovno tu. Heslo odovzdajte trénerovi osobne — pri prvom prihlásení si ho môže zmeniť.'
+          : 'Nových trénerov zakladá správca klubu.' }),
     );
   }
 

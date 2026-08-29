@@ -363,6 +363,9 @@ export async function unlockWithPin(email, pin) {
   return currentTrainer();
 }
 
+/** Je prihlásený tréner správcom klubu? */
+export const jeSpravca = () => currentTrainer()?.isAdmin === true;
+
 export const setDevicePin = (pin, profil = {}) => api.createVault(pin, profil);
 export const hasDevicePin = () => api.hasVault();
 export const devicePinAccounts = () => api.vaultAccounts();

@@ -24,10 +24,13 @@ const MAX_FAILED = 200;
 
 const MAPPERS = {
   trainers: {
+    // is_admin sem zámerne neposielame — o správcovi rozhoduje databáza,
+    // nie appka. Keby to appka mohla prepísať, stačilo by obísť obrazovku.
     toRow: (t) => ({ id: t.id, name: t.name, initials: t.initials, active: t.active !== false }),
     fromRow: (r) => ({
       id: r.id, name: r.name, initials: r.initials,
-      active: r.active !== false, createdAt: r.created_at, groupIds: [],
+      active: r.active !== false, isAdmin: r.is_admin === true,
+      createdAt: r.created_at, groupIds: [],
     }),
   },
   groups: {
