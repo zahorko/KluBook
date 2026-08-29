@@ -81,11 +81,13 @@ const MAPPERS = {
       // platba za tréning býva pri dochádzke — tam, kde vzniká
       paid: Boolean(a.paid),
       paid_amount: a.paid ? (a.paidAmount ?? null) : null,
+      paid_by: a.paid ? (a.paidBy ?? null) : null,
     }),
     fromRow: (r) => ({
       id: r.id, sessionId: r.session_id, studentId: r.student_id, present: r.present, at: r.at,
       paid: Boolean(r.paid),
       paidAmount: r.paid_amount === null || r.paid_amount === undefined ? null : Number(r.paid_amount),
+      paidBy: r.paid_by ?? null,
     }),
   },
   schedule: {
@@ -151,6 +153,13 @@ const MAPPERS = {
       at: r.at, delivered: Boolean(r.delivered), note: r.note || '',
     }),
   },
+  handovers: {
+    toRow: (o) => ({ id: o.id, trainer_id: o.trainerId, amount: o.amount, at: o.at, note: o.note || '' }),
+    fromRow: (r) => ({
+      id: r.id, trainerId: r.trainer_id, amount: Number(r.amount) || 0,
+      at: r.at, note: r.note || '', createdAt: r.created_at,
+    }),
+  },
   absences: {
     toRow: (a) => ({ id: a.id, student_id: a.studentId, date: a.date, note: a.note || '' }),
     fromRow: (r) => ({ id: r.id, studentId: r.student_id, date: r.date, note: r.note || '', createdAt: r.created_at }),
@@ -175,7 +184,7 @@ const MAPPERS = {
 
 /* Poradie zápisu rešpektuje väzby (tréning musí existovať pred dochádzkou). */
 const PUSH_ORDER = ['club_settings', 'trainers', 'groups', 'schedule', 'students', 'sessions',
-  'attendance', 'events', 'event_results', 'shop_items', 'purchases', 'absences'];
+  'attendance', 'events', 'event_results', 'shop_items', 'purchases', 'absences', 'handovers'];
 
 /* Tabuľky, kde záznam poznáme aj podľa inej dvojice stĺpcov než id —
    keby dvaja tréneri zapísali to isté z dvoch zariadení. */
@@ -459,7 +468,7 @@ export async function pull() {
   emit();
   try {
     const [trainers, groups, students, sessions, attendance, settings, schedule,
-      events, eventResults, shopItems, purchases, absences] = await Promise.all([
+      events, eventResults, shopItems, purchases, absences, handovers] = await Promise.all([
       selectAll('trainers'),
       selectAll('groups'),
       selectAll('students'),
@@ -483,6 +492,7 @@ export async function pull() {
       }),
       selectAll('purchases').catch(() => []),
       selectAll('absences').catch(() => []),
+      selectAll('handovers').catch(() => []),
     ]);
 
     const map = (table, rows) => (rows ?? []).map(MAPPERS[table].fromRow);
@@ -498,6 +508,7 @@ export async function pull() {
       shopItems: map('shop_items', shopItems),
       purchases: map('purchases', purchases),
       absences: map('absences', absences),
+      handovers: map('handovers', handovers),
       settings: settings?.[0] ? MAPPERS.club_settings.fromRow(settings[0]) : null,
     };
 

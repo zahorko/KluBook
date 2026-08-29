@@ -5,11 +5,12 @@
    Táto obrazovka je na to, čo z toho vyplýva: kto ešte dlhuje
    a koľko sa za mesiac vybralo.
    ========================================================= */
-import { el, mount, toast, fmtPeriod, fmtDayShort, shiftPeriod, downloadCSV, sheet } from '../ui.js';
+import { el, mount, toast, fmtPeriod, fmtDayShort, shiftPeriod, downloadCSV, sheet, field } from '../ui.js';
 import {
   db, groupName, todayISO, periodOf, allStudents, primaryGroupId, studentGroupNames,
-  studentFee, hasOwnFee, ucetZiaka, dlznici, pokladna, platbyZiaka,
+  studentFee, hasOwnFee, ucetZiaka, pokladna, platbyZiaka,
   vybraneZaTrening, toggleTrainingPaid, sessionsInRange, currentTrainer, studentById,
+  pokladnaTrenerov, zapisatOdvod, zrusitOdvod, odvodyTrenera,
 } from '../store.js';
 import { go, refresh } from '../router.js';
 import { contactSheet, maKontakt, textPlatba } from '../contact.js';
@@ -51,7 +52,7 @@ export function renderPayments(root) {
     ),
 
     el('div.pillbar', {},
-      [['ziaci', 'Podľa žiakov'], ['treningy', 'Podľa tréningov']].map(([id, label]) =>
+      [['ziaci', 'Podľa žiakov'], ['treningy', 'Podľa tréningov'], ['pokladna', 'Pokladňa']].map(([id, label]) =>
         el('button.pill', {
           text: label,
           'aria-pressed': String(uiState.pohlad === id),
@@ -60,7 +61,9 @@ export function renderPayments(root) {
       ),
     ),
 
-    uiState.pohlad === 'ziaci' ? podlaZiakov(obdobie, period) : podlaTreningov(obdobie),
+    uiState.pohlad === 'ziaci' ? podlaZiakov(obdobie, period)
+      : uiState.pohlad === 'treningy' ? podlaTreningov(obdobie)
+        : pokladnaSekcia(obdobie),
 
     el('button.btn.btn--ghost.btn--block', { text: '⤓ Export do CSV', onclick: () => exportPlatby(period, obdobie) }),
   ));
@@ -192,6 +195,117 @@ function podlaTreningov(obdobie) {
       );
     })),
   );
+}
+
+
+/* ---------------- pokladňa ---------------- */
+/**
+ * Kto koľko hotovosti prevzal a koľko z nej už odovzdal do klubovej pokladne.
+ * Appka inak vie len to, koľko sa malo vybrať — nie kde tie peniaze sú.
+ */
+function pokladnaSekcia(obdobie) {
+  const riadky = pokladnaTrenerov(obdobie);
+  const spolu = riadky.reduce((a, r) => ({
+    prevzal: a.prevzal + r.prevzal, odovzdal: a.odovzdal + r.odovzdal, uSeba: a.uSeba + r.uSeba,
+  }), { prevzal: 0, odovzdal: 0, uSeba: 0 });
+
+  if (!riadky.length) {
+    return el('div.empty', {},
+      el('span.empty__mark', { text: '💶' }),
+      'V tomto mesiaci sa zatiaľ nevybrala žiadna hotovosť.');
+  }
+
+  return el('div.stack-lg', {},
+    el('div.card.stack', {},
+      el('div.stats', {},
+        el('div.stat', {}, el('div.stat__num', { text: `${eur(spolu.prevzal)} €` }), el('div.stat__lab', { text: 'prevzali tréneri' })),
+        el('div.stat', {}, el('div.stat__num', { text: `${eur(spolu.odovzdal)} €` }), el('div.stat__lab', { text: 'odovzdané' })),
+        el('div.stat', {},
+          el('div.stat__num', { style: { color: spolu.uSeba ? 'var(--terracotta-d)' : 'inherit' }, text: `${eur(spolu.uSeba)} €` }),
+          el('div.stat__lab', { text: 'ešte u trénerov' })),
+      ),
+    ),
+
+    el('div', {},
+      el('h2.section-title', { text: 'Podľa trénera' }),
+      el('div.card.card--flush.list', {}, riadky.map((r) =>
+        el('button.item', { onclick: () => odvodSheet(r) },
+          el('span.grow', {},
+            el('div.item__title', { text: r.meno }),
+            el('div.item__sub', { text: `prevzal ${eur(r.prevzal)} € · odovzdal ${eur(r.odovzdal)} €` }),
+          ),
+          el('span', { style: { textAlign: 'right' } },
+            el('div.mono', {
+              style: { fontWeight: '700', color: r.uSeba > 0 ? 'var(--terracotta-d)' : 'var(--green)' },
+              text: r.uSeba > 0 ? `${eur(r.uSeba)} €` : '✓',
+            }),
+            el('div.item__sub', { text: r.uSeba > 0 ? 'u seba' : 'vyrovnané' }),
+          ),
+          el('span.chev', { text: '›' }),
+        ),
+      )),
+      el('p.tiny.faint', { style: { margin: '8px 2px 0' },
+        text: 'Peniaze sa pripisujú tomu, kto platbu v appke zapísal. Ťuknutím zapíšete odovzdanie do klubovej pokladne.' }),
+    ),
+  );
+}
+
+function odvodSheet(riadok) {
+  sheet(`${riadok.meno} — pokladňa`, (body, close) => {
+    const obsah = el('div.stack');
+    const vykresli = () => {
+      const historia = odvodyTrenera(riadok.trainerId);
+      mount(obsah,
+        el('div.stats', {},
+          el('div.stat', {}, el('div.stat__num', { text: `${eur(riadok.prevzal)} €` }), el('div.stat__lab', { text: 'prevzal' })),
+          el('div.stat', {}, el('div.stat__num', { text: `${eur(riadok.odovzdal)} €` }), el('div.stat__lab', { text: 'odovzdal' })),
+          el('div.stat', {}, el('div.stat__num', { text: `${eur(riadok.uSeba)} €` }), el('div.stat__lab', { text: 'u seba' })),
+        ),
+        historia.length
+          ? el('div.card.card--flush.list', {}, historia.slice(0, 10).map((o) =>
+            el('div.item', {},
+              el('span.grow', {},
+                el('div.item__title', { text: `${eur(o.amount)} €` }),
+                el('div.item__sub', { text: `${fmtDayShort(o.at)}${o.note ? ` · ${o.note}` : ''}` }),
+              ),
+              el('button.iconbtn', {
+                text: '✕', title: 'Zrušiť tento zápis',
+                onclick: () => { zrusitOdvod(o.id); toast('Zápis zrušený'); close(); refresh(); },
+              }),
+            ),
+          ))
+          : el('p.small.muted', { style: { margin: 0 }, text: 'Zatiaľ nič neodovzdal.' }),
+      );
+    };
+    vykresli();
+
+    const suma = el('input.input', { type: 'number', step: '0.5', min: '0', value: String(Math.max(0, riadok.uSeba)) });
+    const datum = el('input.input', { type: 'date', value: todayISO() });
+    const poznamka = el('input.input', { type: 'text', placeholder: 'napr. odovzdané pokladníkovi' });
+
+    mount(body,
+      obsah,
+      el('h2.section-title', { text: 'Zapísať odovzdanie' }),
+      el('div.grid2', {}, field('Suma (€)', suma), field('Dátum', datum)),
+      field('Poznámka', poznamka),
+      el('button.btn.btn--block', {
+        text: 'Zapísať',
+        onclick: () => {
+          try {
+            zapisatOdvod({
+              trainerId: riadok.trainerId,
+              amount: Number(suma.value),
+              at: datum.value || todayISO(),
+              note: poznamka.value.trim(),
+            });
+            close();
+            toast(`Odovzdaných ${eur(Number(suma.value))} €`);
+            refresh();
+          } catch (e) { toast(e.message); }
+        },
+      }),
+    );
+  });
 }
 
 function exportPlatby(period, obdobie) {

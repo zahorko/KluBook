@@ -85,6 +85,7 @@ const emptyDb = () => ({
   shopItems: [],
   purchases: [],
   absences: [],
+  handovers: [],
 });
 
 /* ---------- demo dáta ---------- */
@@ -175,6 +176,7 @@ function load() {
         parsed.shopItems ??= [];
         parsed.purchases ??= [];
         parsed.absences ??= [];
+        parsed.handovers ??= [];
         return parsed;
       }
     } catch { /* poškodené dáta preskočíme */ }
@@ -289,6 +291,7 @@ export function applyServerData(data) {
   if (data.shopItems) db.shopItems = zluc('shop_items', data.shopItems);
   if (data.purchases) db.purchases = zluc('purchases', data.purchases);
   if (data.absences) db.absences = zluc('absences', data.absences);
+  if (data.handovers) db.handovers = zluc('handovers', data.handovers);
   if (data.settings) db.settings = { ...DEFAULT_SETTINGS, ...data.settings };
   db.demo = false;
   saveNow();
@@ -1489,6 +1492,8 @@ export function setTrainingPaid(sessionId, studentId, paid, suma = null) {
   if (!rec) return null;
   rec.paid = Boolean(paid);
   rec.paidAmount = paid ? (suma ?? studentFee(studentId)) : null;
+  // pri hotovosti je najdôležitejšie „kto" ten, kto peniaze prevzal
+  rec.paidBy = paid ? (currentTrainer()?.id ?? null) : null;
   sync.up('attendance', rec);
   save();
   return rec;
@@ -1564,6 +1569,82 @@ export function pokladna({ from = null, to = null } = {}) {
   return { vybrane, dlh, treningov, zaplatenych, nezaplatenych: treningov - zaplatenych };
 }
 
+
+/* ---------- klubová pokladňa ----------
+   Peniaze vyberajú tréneri do vrecka a raz za čas ich odovzdajú do klubovej
+   pokladne. Appka doteraz vedela len to, koľko sa malo vybrať. Tu sleduje,
+   kto koľko prevzal a koľko z toho už odovzdal. */
+
+export const odvody = () => db.handovers ?? [];
+
+/** Kto platbu prevzal. Keď to appka nezaznamenala (staršie záznamy),
+    pripíšeme ju trénerovi, ktorý ten tréning viedol. */
+function prevzalPlatbu(zaznam, treningy) {
+  return zaznam.paidBy ?? treningy.get(zaznam.sessionId)?.trainerId ?? null;
+}
+
+/**
+ * Pokladňa po trénerovi: koľko prevzal, koľko odovzdal a koľko má u seba.
+ * Bez tohto rozdielu sa hotovosť stráca ticho.
+ */
+export function pokladnaTrenerov({ from = null, to = null } = {}) {
+  const treningy = new Map(db.sessions.map((t) => [t.id, t]));
+  const vRozsahu = (d) => Boolean(d) && (!from || d >= from) && (!to || d <= to);
+
+  const prevzate = new Map();
+  for (const a of db.attendance) {
+    if (!a.paid || !a.present) continue;
+    const t = treningy.get(a.sessionId);
+    if (!vRozsahu(t?.date)) continue;
+    const kto = prevzalPlatbu(a, treningy);
+    prevzate.set(kto, (prevzate.get(kto) ?? 0) + (Number(a.paidAmount ?? studentFee(a.studentId)) || 0));
+  }
+
+  const odovzdane = new Map();
+  for (const o of odvody()) {
+    if (!vRozsahu(o.at)) continue;
+    odovzdane.set(o.trainerId, (odovzdane.get(o.trainerId) ?? 0) + (Number(o.amount) || 0));
+  }
+
+  const idcka = new Set([...prevzate.keys(), ...odovzdane.keys(), ...db.trainers.map((t) => t.id)]);
+  return [...idcka]
+    .map((id) => {
+      const prevzal = Math.round((prevzate.get(id) ?? 0) * 100) / 100;
+      const odovzdal = Math.round((odovzdane.get(id) ?? 0) * 100) / 100;
+      return {
+        trainerId: id,
+        trainer: trainerById(id),
+        meno: trainerById(id)?.name ?? 'Neznámy tréner',
+        prevzal, odovzdal,
+        uSeba: Math.round((prevzal - odovzdal) * 100) / 100,
+      };
+    })
+    .filter((r) => r.prevzal || r.odovzdal)
+    .sort((a, b) => b.uSeba - a.uSeba || a.meno.localeCompare(b.meno, 'sk'));
+}
+
+export function zapisatOdvod({ trainerId, amount, at = todayISO(), note = '' }) {
+  const zaznam = {
+    id: uid('odv'), trainerId, amount: Math.round((Number(amount) || 0) * 100) / 100,
+    at, note, createdAt: new Date().toISOString(),
+  };
+  if (zaznam.amount <= 0) throw new Error('Suma musí byť väčšia ako nula.');
+  db.handovers.push(zaznam);
+  sync.up('handovers', zaznam);
+  save();
+  return zaznam;
+}
+
+export function zrusitOdvod(id) {
+  db.handovers = db.handovers.filter((o) => o.id !== id);
+  sync.del('handovers', id);
+  save();
+}
+
+/** História odovzdaní, najnovšie hore. */
+export const odvodyTrenera = (trainerId) =>
+  odvody().filter((o) => o.trainerId === trainerId).sort((a, b) => b.at.localeCompare(a.at));
+
 /* ---------- nastavenia klubu a tréneri ---------- */
 export function updateSettings(patch) {
   Object.assign(db.settings, patch);
@@ -1603,7 +1684,7 @@ export function importJSON(text) {
   parsed.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
   parsed.groups = parsed.groups?.length ? parsed.groups : GROUPS;
   for (const k of ['trainers', 'sessions', 'attendance', 'schedule', 'events',
-    'eventResults', 'shopItems', 'purchases', 'absences']) {
+    'eventResults', 'shopItems', 'purchases', 'absences', 'handovers']) {
     if (!Array.isArray(parsed[k])) parsed[k] = [];
   }
   for (const k of Object.keys(db)) delete db[k];
@@ -1638,6 +1719,7 @@ export function importJSONToCloud(text) {
     ['shop_items', db.shopItems],
     ['purchases', db.purchases],
     ['absences', db.absences],
+    ['handovers', db.handovers],
   ];
 
   let pocet = 0;
