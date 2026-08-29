@@ -8,10 +8,11 @@ import {
   db, sortedGroups, groupName, trainerName, studentsOfGroup, sessionsInRange,
   durationMinutes, attendanceOfSession, todayISO, periodOf,
   periodsUpToNow, allStudents, studentGroupNames, ucetZiaka,
+  everyone, trainsWithClub, studentFee, hasOwnFee,
 } from '../store.js';
-import { refresh } from '../router.js';
+import { go, refresh } from '../router.js';
 
-const VYCHODZI_STAV = { tab: 'treneri', range: '30' };
+const VYCHODZI_STAV = { tab: 'treneri', range: '30', kontaktyFilter: 'vsetci' };
 const uiState = { ...VYCHODZI_STAV };
 
 /** To isté ako v Rebríčku — nech sa padajúca záložka nedrží. */
@@ -24,12 +25,16 @@ const rangeFrom = (days) => {
   return todayISO(d);
 };
 
-export function renderReports(root) {
+export function renderReports(root, zalozka = '') {
+  // z iných obrazoviek sa dá odkázať rovno na konkrétnu záložku
+  const podlaAdresy = { zoznam: 'kontakty', platby: 'platby', ziaci: 'ziaci', treneri: 'treneri' };
+  if (podlaAdresy[zalozka]) uiState.tab = podlaAdresy[zalozka];
+
   const from = rangeFrom(uiState.range);
   const to = todayISO();
 
   const tabs = el('div.pillbar', {},
-    [['treneri', 'Tréneri'], ['ziaci', 'Žiaci'], ['platby', 'Platby']].map(([id, label]) =>
+    [['treneri', 'Tréneri'], ['ziaci', 'Žiaci'], ['platby', 'Platby'], ['kontakty', 'Zoznam']].map(([id, label]) =>
       el('button.pill', {
         text: label,
         'aria-pressed': String(uiState.tab === id),
@@ -51,9 +56,10 @@ export function renderReports(root) {
   const body = el('div');
   if (uiState.tab === 'treneri') body.append(trainersReport(from, to));
   else if (uiState.tab === 'ziaci') body.append(studentsReport(from, to));
+  else if (uiState.tab === 'kontakty') body.append(kontaktyReport());
   else body.append(paymentsReport());
 
-  const bezObdobia = uiState.tab === 'platby';
+  const bezObdobia = uiState.tab === 'platby' || uiState.tab === 'kontakty';
   mount(root, el('div.stack-lg', {}, tabs, bezObdobia ? null : ranges, body));
 }
 
@@ -211,6 +217,96 @@ function studentsReport(from, to) {
           }
         }
         downloadCSV(`dochadzka-ziakov-${from}_${to}.csv`, rows);
+        toast('CSV stiahnuté');
+      },
+    }),
+  );
+}
+
+
+/* ---------------- kompletný zoznam ---------------- */
+/**
+ * Všetci, čo v systéme figurujú — trénujúci aj netrénujúci, aktívni aj
+ * archivovaní. Jedno miesto, kde tréner nájde meno a kontakt bez toho,
+ * aby musel vedieť, v ktorej škatuľke človek je.
+ */
+function kontaktyReport() {
+  const vsetci = everyone({ includeInactive: true });
+
+  const filtre = {
+    vsetci: () => true,
+    trenuju: (s) => trainsWithClub(s) && s.active,
+    netrenuju: (s) => !trainsWithClub(s),
+    neaktivni: (s) => !s.active,
+  };
+  const popisky = [
+    ['vsetci', 'Všetci'], ['trenuju', 'Trénujú'],
+    ['netrenuju', 'Netrénujú'], ['neaktivni', 'Neaktívni'],
+  ];
+
+  const zoznam = vsetci.filter(filtre[uiState.kontaktyFilter] ?? filtre.vsetci);
+
+  const stav = (s) => {
+    if (!s.active) return 'neaktívny';
+    return trainsWithClub(s) ? 'trénuje' : 'netrénuje';
+  };
+
+  return el('div.stack-lg', {},
+    el('div.pillbar', {}, popisky.map(([id, label]) =>
+      el('button.pill', {
+        text: `${label} · ${vsetci.filter(filtre[id]).length}`,
+        'aria-pressed': String(uiState.kontaktyFilter === id),
+        onclick: () => { uiState.kontaktyFilter = id; refresh(); },
+      }),
+    )),
+
+    zoznam.length === 0
+      ? el('div.empty', { text: 'V tomto výbere nikto nie je.' })
+      : el('div.card.card--flush.tablewrap', {},
+        el('table.data', {},
+          el('thead', {}, el('tr', {},
+            ['Meno', 'Skupiny', 'Telefón', 'E-mail', 'Stav'].map((h) => el('th', { text: h })),
+          )),
+          el('tbody', {}, zoznam.map((s) =>
+            el('tr', {},
+              el('td', {},
+                el('button', {
+                  style: {
+                    background: 'none', border: 0, padding: 0, cursor: 'pointer',
+                    font: 'inherit', color: 'inherit', textAlign: 'left',
+                  },
+                  onclick: () => go(`/ziaci/${s.id}`),
+                }, s.name),
+                s.contactName ? el('div.item__sub', { text: s.contactName }) : null,
+              ),
+              el('td', { text: studentGroupNames(s).join(' + ') || '—' }),
+              el('td', {}, s.contactPhone
+                ? el('a', { href: `tel:${s.contactPhone.replace(/[^\d+]/g, '')}` }, s.contactPhone)
+                : '—'),
+              el('td', {}, s.contactEmail
+                ? el('a', { href: `mailto:${s.contactEmail}` }, s.contactEmail)
+                : '—'),
+              el('td', { text: stav(s) }),
+            ),
+          )),
+        ),
+      ),
+
+    el('p.tiny.faint', { style: { margin: '0 2px' },
+      text: 'Ťuknutím na meno otvoríte kartu, na číslo zavoláte, na e-mail napíšete. '
+        + 'Zoznam obsahuje aj archivovaných — tí sú označení ako neaktívni.' }),
+
+    el('button.btn.btn--ghost.btn--block', {
+      text: '⤓ Export zoznamu do CSV',
+      onclick: () => {
+        const rows = [['Meno', 'Skupiny', 'Kontaktná osoba', 'Telefón', 'E-mail',
+          'Stav', 'V klube od', 'Cena tréningu']];
+        for (const s of zoznam) {
+          rows.push([s.name, studentGroupNames(s).join(' + '), s.contactName || '',
+            s.contactPhone || '', s.contactEmail || '', stav(s), s.startDate || '',
+            `${studentFee(s)}${hasOwnFee(s) ? ' (vlastná)' : ''}`]);
+        }
+        downloadCSV(`zoznam-${todayISO()}.csv`, rows);
         toast('CSV stiahnuté');
       },
     }),

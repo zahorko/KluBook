@@ -90,7 +90,7 @@ function render() {
         renderRebricek(content);
         break;
       case 'prehlady':
-        renderReports(content);
+        renderReports(content, param);
         break;
       case 'nastavenia':
         renderSettings(content, trainer);

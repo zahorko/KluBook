@@ -126,6 +126,11 @@ export function renderStudents(root) {
         onclick: () => hromadnaSpravaSheet(),
       }),
     ),
+    // úplný zoznam s kontaktmi žije v Prehľadoch, ale hľadá sa prirodzene tu
+    el('button.btn.btn--ghost.btn--block', {
+      text: '📋 Kompletný zoznam s kontaktmi',
+      onclick: () => go('/prehlady/zoznam'),
+    }),
   ));
 }
 
