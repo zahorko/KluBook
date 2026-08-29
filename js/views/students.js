@@ -437,6 +437,63 @@ function ospravedlnitSheet(s, hotovo) {
 }
 
 
+
+/**
+ * Krivka ELO za sezónu. Rodič sa nepýta na číslo, pýta sa, či to ide hore —
+ * a to sa z tvaru čiary prečíta rýchlejšie než zo stĺpca čísel.
+ */
+function krivkaRatingu(historia) {
+  const body = historia.slice(-14);
+  const hodnoty = body.map((r) => r.rating);
+  const min = Math.min(...hodnoty);
+  const max = Math.max(...hodnoty);
+  const rozpatie = Math.max(1, max - min);
+
+  const S = 300;      // šírka výkresu
+  const V = 74;       // výška
+  const okraj = 8;
+  const x = (i) => (body.length === 1 ? S / 2 : okraj + (i * (S - 2 * okraj)) / (body.length - 1));
+  const y = (h) => V - okraj - ((h - min) / rozpatie) * (V - 2 * okraj);
+
+  const ciara = body.map((r, i) => `${x(i).toFixed(1)},${y(r.rating).toFixed(1)}`).join(' ');
+  const vypln = `${okraj},${V - okraj} ${ciara} ${x(body.length - 1).toFixed(1)},${V - okraj}`;
+  const stupa = hodnoty.at(-1) >= hodnoty[0];
+  const farba = stupa ? 'var(--green)' : 'var(--red)';
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${S} ${V}`);
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', String(V));
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', `ELO od ${min} do ${max}`);
+  svg.innerHTML = `
+    <polygon points="${vypln}" fill="${farba}" opacity="0.12" />
+    <polyline points="${ciara}" fill="none" stroke="${farba}" stroke-width="2.5"
+      stroke-linejoin="round" stroke-linecap="round" />
+    ${body.map((r, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(r.rating).toFixed(1)}" r="${i === body.length - 1 ? 4 : 2.5}"
+      fill="${farba}" />`).join('')}
+  `;
+
+  return el('div', {},
+    el('div.row.row--between', {},
+      el('span.tiny.faint', { text: `najnižšie ${min}` }),
+      el('span.tiny.faint', { text: `najvyššie ${max}` }),
+    ),
+    el('div', { style: { margin: '2px 0' } }, svg),
+    el('div.row.row--between', {},
+      el('span.tiny.faint', { text: fmtDate(body[0].at) }),
+      el('span.tiny.faint', { text: `${body.length} ${sklonuj(body.length, 'meranie', 'merania', 'meraní')}` }),
+      el('span.tiny.faint', { text: fmtDate(body.at(-1).at) }),
+    ),
+  );
+}
+
+/** Matrika vedie mená ako „Priezvisko, Meno" — my ich píšeme naopak. */
+export const menoZMatriky = (meno) => {
+  const [priezvisko, krstne] = String(meno || '').split(',').map((x) => x.trim());
+  return krstne ? `${krstne} ${priezvisko}` : (priezvisko ?? '');
+};
+
 /**
  * ELO zo zväzu. Rebríček appky meria usilovnosť — koľko dieťa chodí a hrá.
  * ELO meria silu. Rodič sa pýta na to druhé, preto tu je.
@@ -463,16 +520,9 @@ function eloSekcia(s) {
           : null,
       ),
       historia.length > 1
-        ? el('div', {},
-          el('div.field__label', { text: 'Ako sa to menilo' }),
-          el('div.card.card--flush.list', {}, historia.slice(-6).reverse().map((r) =>
-            el('div.item', {},
-              el('span.grow', {}, el('div.item__sub', { text: fmtDate(r.at) })),
-              el('span.mono', { style: { fontWeight: '600' }, text: String(r.rating) }),
-            ),
-          )),
-        )
-        : null,
+        ? krivkaRatingu(historia)
+        : el('p.tiny.faint', { style: { margin: 0 },
+          text: 'Krivka sa objaví po druhom meraní — zväz aktualizuje ELO raz mesačne.' }),
       el('p.tiny.faint', { style: { margin: 0 },
         text: `Zväz: č. ${s.sszId}${s.fideId ? ` · FIDE ${s.fideId}` : ''}`
           + `${s.ratingAt ? ` · naposledy ${fmtDate(s.ratingAt)}` : ''}` }),
@@ -505,18 +555,14 @@ function eloSekcia(s) {
   return el('div', {}, el('h2.section-title', { text: 'ELO' }), obsah);
 }
 
-/** Vyhľadanie žiaka v matrike zväzu. */
-function zvazSheet(s) {
+/** Vyhľadanie v matrike zväzu. `hotovo` dostane vybraného hráča. */
+function zvazVyberSheet(hotovo, predvolene = '') {
   sheet('Nájsť v matrike zväzu', (body, close) => {
     const vysledky = el('div.stack');
     const stav = el('p.small.muted', { style: { margin: 0 }, text: 'Zadajte priezvisko.' });
-
     let posledne = 0;
-    const hladaj = textInput({
-      placeholder: 'Priezvisko…',
-      value: s.name.split(' ').at(-1) ?? '',
-      oninput: () => spusti(),
-    });
+
+    const hladaj = textInput({ placeholder: 'Priezvisko…', value: predvolene, oninput: () => spusti() });
 
     const spusti = async () => {
       const q = hladaj.value.trim();
@@ -525,19 +571,14 @@ function zvazSheet(s) {
       stav.textContent = 'Hľadám…';
       try {
         const najdene = await najdiVMatrike(q);
-        if (moje !== posledne) return;          // medzitým písal ďalej
+        if (moje !== posledne) return;
         stav.textContent = najdene.length ? `Nájdených ${najdene.length}` : 'Nikto taký v matrike nie je.';
         mount(vysledky, najdene.map((h) =>
           el('button.item', {
-            onclick: () => {
-              prepojitSoZvazom(s.id, h);
-              close();
-              toast(`${s.name} prepojený · ELO ${h.rating ?? '—'}`);
-              refresh();
-            },
+            onclick: () => { close(); hotovo(h); },
           },
             el('span.grow', {},
-              el('div.item__title', { text: h.name }),
+              el('div.item__title', { text: menoZMatriky(h.name) }),
               el('div.item__sub', { text: `${h.club || 'bez klubu'} · č. ${h.ssz_id}` }),
             ),
             el('span.mono', { style: { fontWeight: '700' }, text: String(h.rating ?? '—') }),
@@ -550,8 +591,6 @@ function zvazSheet(s) {
     };
     spusti();
 
-    // Kópia matriky môže byť prázdna (prvé použitie) alebo stará. Nech si ju
-    // tréner nemusí hľadať v Nastaveniach — stiahne sa rovno odtiaľto.
     const stiahni = el('button.btn.btn--ghost.btn--block', {
       text: '↻ Stiahnuť maticu zo zväzu',
       onclick: async () => {
@@ -561,18 +600,26 @@ function zvazSheet(s) {
           const v = await obnovitElo();
           stav.textContent = `Matica stiahnutá — ${v.hracov} hráčov.`;
           spusti();
-        } catch (e) {
-          stav.textContent = e.message;
-        } finally { stiahni.disabled = false; }
+        } catch (e) { stav.textContent = e.message; } finally { stiahni.disabled = false; }
       },
     });
 
     mount(body,
       el('p.small.muted', { style: { margin: 0 },
-        text: 'Hľadá sa v kópii matriky Slovenského šachového zväzu. Vyberte správneho hráča — podľa neho sa bude ELO aktualizovať.' }),
+        text: 'Kto je registrovaný v zväze, toho netreba prepisovať ručne — meno, číslo aj ELO prídu odtiaľ. '
+          + 'Neregistrovaného žiaka zapíšete normálne rukou.' }),
       hladaj, stav, vysledky, stiahni,
     );
   });
+}
+
+/** Prepojenie existujúceho žiaka. */
+function zvazSheet(s) {
+  zvazVyberSheet((h) => {
+    prepojitSoZvazom(s.id, h);
+    toast(`${s.name} prepojený · ELO ${h.rating ?? '—'}`);
+    refresh();
+  }, s.name.split(' ').at(-1) ?? '');
 }
 
 /* ---------------- detail žiaka ---------------- */
@@ -776,7 +823,12 @@ export function renderStudentDetail(root, studentId) {
 }
 
 /* ---------------- formulár žiaka ---------------- */
-export function studentSheet(student, defaultGroupId) {
+/**
+ * Formulár žiaka. `predvyplnene` slúži na návrat z hľadania v matrike —
+ * hárky sa neukladajú na seba, takže formulár sa otvorí nanovo aj s tým,
+ * čo už bolo napísané.
+ */
+export function studentSheet(student, defaultGroupId, predvyplnene = null) {
   const isNew = !student;
   // „netrenuju" je záložka zoznamu, nie skupina — nový človek pod ňou
   // je hráč, ktorý na tréningy nechodí. Predvolíme mu to a žiadnu skupinu.
@@ -786,7 +838,9 @@ export function studentSheet(student, defaultGroupId) {
     : sortedGroups()[0]?.id;
 
   sheet(isNew ? 'Nový žiak' : 'Upraviť žiaka', (body, close) => {
-    const name = textInput({ value: student?.name ?? '', placeholder: 'Meno a priezvisko' });
+    const zoZvazu = { hrac: predvyplnene?.zvaz ?? null };
+    const p0 = predvyplnene ?? {};
+    const name = textInput({ value: p0.name ?? student?.name ?? '', placeholder: 'Meno a priezvisko' });
     const trenuje = el('input', {
       type: 'checkbox',
       checked: student ? trainsWithClub(student) : !zoZalozkyNetrenuju,
@@ -814,21 +868,44 @@ export function studentSheet(student, defaultGroupId) {
         ),
       ),
     );
-    const contactName = textInput({ value: student?.contactName ?? '', placeholder: 'Meno rodiča / žiaka' });
-    const phone = el('input.input', { type: 'tel', value: student?.contactPhone ?? '', placeholder: '0900 000 000' });
-    const email = el('input.input', { type: 'email', value: student?.contactEmail ?? '', placeholder: 'nepovinné' });
+    const contactName = textInput({ value: p0.contactName ?? student?.contactName ?? '', placeholder: 'Meno rodiča / žiaka' });
+    const phone = el('input.input', { type: 'tel', value: p0.contactPhone ?? student?.contactPhone ?? '', placeholder: '0900 000 000' });
+    const email = el('input.input', { type: 'email', value: p0.contactEmail ?? student?.contactEmail ?? '', placeholder: 'nepovinné' });
     const start = el('input.input', { type: 'date', value: student?.startDate ?? todayISO() });
     const fee = el('input.input', {
       type: 'number', step: '0.5', min: '0',
       value: student?.monthlyFee ?? '',
       placeholder: `klubová cena (${db.settings.fee} €)`,
     });
-    const note = el('textarea.textarea', { placeholder: 'napr. hrá za mládežnícky tím' }, student?.note ?? '');
+    const note = el('textarea.textarea', { placeholder: 'napr. hrá za mládežnícky tím' }, p0.note ?? student?.note ?? '');
 
     const skupinyBox = el('div', { style: { display: (student ? trainsWithClub(student) : !zoZalozkyNetrenuju) ? '' : 'none' } },
       field('Skupiny (môže byť vo viacerých)', groupBox));
 
     mount(body,
+      // Kto je v matrike zväzu, toho netreba prepisovať ručne — meno, číslo
+      // aj ELO prídu odtiaľ. Pre začiatočníkov, ktorí registrovaní nie sú,
+      // ostáva všetko po starom.
+      isNew ? el('button.btn.btn--soft.btn--block', {
+        text: zoZvazu.hrac ? '🔗 Vybrať iného zo zväzu' : '🔗 Načítať zo zväzu',
+        onclick: () => {
+          const rozpisane = {
+            name: name.value, contactName: contactName.value, contactPhone: phone.value,
+            contactEmail: email.value, note: note.value,
+          };
+          close();
+          zvazVyberSheet((h) => {
+            studentSheet(null, defaultGroupId, {
+              ...rozpisane, name: menoZMatriky(h.name), zvaz: h,
+            });
+          }, name.value.trim().split(' ').at(-1) ?? '');
+        },
+      }) : null,
+      zoZvazu.hrac
+        ? el('p.tiny', { style: { margin: '-4px 2px 0', color: 'var(--green)' },
+          text: `Zo zväzu: č. ${zoZvazu.hrac.ssz_id}`
+            + `${zoZvazu.hrac.rating ? ` · ELO ${zoZvazu.hrac.rating}` : ' · bez ELO'}` })
+        : null,
       field('Meno *', name),
       el('label.row', {
         style: { gap: '10px', padding: '10px 12px', border: '1px solid var(--cream-line)', borderRadius: 'var(--r-md)', background: 'var(--white)', cursor: 'pointer' },
@@ -852,7 +929,7 @@ export function studentSheet(student, defaultGroupId) {
         onclick: () => {
           if (!name.value.trim()) { toast('Zadajte meno žiaka'); return; }
           if (trenuje.checked && !zvolene.size) { toast('Vyberte aspoň jednu skupinu'); return; }
-          upsertStudent({
+          const novy = upsertStudent({
             id: student?.id,
             name: name.value.trim(),
             groupIds: trenuje.checked ? [...zvolene] : [],
@@ -865,8 +942,11 @@ export function studentSheet(student, defaultGroupId) {
             note: note.value.trim(),
             active: student?.active ?? true,
           });
+          if (zoZvazu.hrac) prepojitSoZvazom(novy.id, zoZvazu.hrac);
           close();
-          toast(isNew ? 'Žiak pridaný' : 'Uložené');
+          toast(isNew
+            ? (zoZvazu.hrac ? `Žiak pridaný · ELO ${zoZvazu.hrac.rating ?? '—'}` : 'Žiak pridaný')
+            : 'Uložené');
           refresh();
         },
       }),
