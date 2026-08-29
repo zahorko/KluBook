@@ -45,6 +45,10 @@ const MAPPERS = {
       monthly_fee: s.monthlyFee === '' || s.monthlyFee === undefined ? null : s.monthlyFee,
       contacted_at: s.contactedAt ?? null,
       trains: s.trains !== false,
+      ssz_id: s.sszId ?? null,
+      fide_id: s.fideId ?? null,
+      rating: s.rating ?? null,
+      rating_at: s.ratingAt ?? null,
       // pole berieme doslova: prázdne pole znamená „bez skupiny", nie „doplň hlavnú"
       group_ids: Array.isArray(s.groupIds)
         ? s.groupIds.filter(Boolean)
@@ -58,6 +62,10 @@ const MAPPERS = {
       monthlyFee: r.monthly_fee === null || r.monthly_fee === undefined ? null : Number(r.monthly_fee),
       contactedAt: r.contacted_at ?? null,
       trains: r.trains !== false,
+      sszId: r.ssz_id ?? null,
+      fideId: r.fide_id ?? null,
+      rating: r.rating === null || r.rating === undefined ? null : Number(r.rating),
+      ratingAt: r.rating_at ?? null,
       groupIds: Array.isArray(r.group_ids)
         ? r.group_ids.filter(Boolean)
         : (r.group_id ? [r.group_id] : []),
@@ -153,6 +161,10 @@ const MAPPERS = {
       at: r.at, delivered: Boolean(r.delivered), note: r.note || '',
     }),
   },
+  ratings: {
+    toRow: (r) => ({ id: r.id, student_id: r.studentId, at: r.at, rating: r.rating }),
+    fromRow: (r) => ({ id: r.id, studentId: r.student_id, at: r.at, rating: Number(r.rating) || 0 }),
+  },
   handovers: {
     toRow: (o) => ({ id: o.id, trainer_id: o.trainerId, amount: o.amount, at: o.at, note: o.note || '' }),
     fromRow: (r) => ({
@@ -184,7 +196,7 @@ const MAPPERS = {
 
 /* Poradie zápisu rešpektuje väzby (tréning musí existovať pred dochádzkou). */
 const PUSH_ORDER = ['club_settings', 'trainers', 'groups', 'schedule', 'students', 'sessions',
-  'attendance', 'events', 'event_results', 'shop_items', 'purchases', 'absences', 'handovers'];
+  'attendance', 'events', 'event_results', 'shop_items', 'purchases', 'absences', 'handovers', 'ratings'];
 
 /* Tabuľky, kde záznam poznáme aj podľa inej dvojice stĺpcov než id —
    keby dvaja tréneri zapísali to isté z dvoch zariadení. */
@@ -468,7 +480,7 @@ export async function pull() {
   emit();
   try {
     const [trainers, groups, students, sessions, attendance, settings, schedule,
-      events, eventResults, shopItems, purchases, absences, handovers] = await Promise.all([
+      events, eventResults, shopItems, purchases, absences, handovers, ratings] = await Promise.all([
       selectAll('trainers'),
       selectAll('groups'),
       selectAll('students'),
@@ -493,6 +505,7 @@ export async function pull() {
       selectAll('purchases').catch(() => []),
       selectAll('absences').catch(() => []),
       selectAll('handovers').catch(() => []),
+      selectAll('ratings').catch(() => []),
     ]);
 
     const map = (table, rows) => (rows ?? []).map(MAPPERS[table].fromRow);
@@ -509,6 +522,7 @@ export async function pull() {
       purchases: map('purchases', purchases),
       absences: map('absences', absences),
       handovers: map('handovers', handovers),
+      ratings: map('ratings', ratings),
       settings: settings?.[0] ? MAPPERS.club_settings.fromRow(settings[0]) : null,
     };
 

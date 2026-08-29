@@ -86,6 +86,7 @@ const emptyDb = () => ({
   purchases: [],
   absences: [],
   handovers: [],
+  ratings: [],
 });
 
 /* ---------- demo dáta ---------- */
@@ -177,6 +178,7 @@ function load() {
         parsed.purchases ??= [];
         parsed.absences ??= [];
         parsed.handovers ??= [];
+        parsed.ratings ??= [];
         return parsed;
       }
     } catch { /* poškodené dáta preskočíme */ }
@@ -292,6 +294,7 @@ export function applyServerData(data) {
   if (data.purchases) db.purchases = zluc('purchases', data.purchases);
   if (data.absences) db.absences = zluc('absences', data.absences);
   if (data.handovers) db.handovers = zluc('handovers', data.handovers);
+  if (data.ratings) db.ratings = zluc('ratings', data.ratings);
   if (data.settings) db.settings = { ...DEFAULT_SETTINGS, ...data.settings };
   db.demo = false;
   saveNow();
@@ -1327,6 +1330,87 @@ export const nedorucneNakupy = () =>
     .filter((n) => n.student)
     .sort((a, b) => String(a.at).localeCompare(String(b.at)));
 
+
+/* ---------- ELO zo zväzu ----------
+   Zväz vedie jedno zlúčené číslo: kým hráč nemá FIDE, je to národné ELO
+   s podlahou 1000; od 1400 vyššie je to priamo FIDE štandard. Appka ho len
+   zobrazuje — sťahuje ho server, lebo chess.sk prehliadač k sebe nepustí. */
+
+/** Prepojenie žiaka s matrikou zväzu. */
+export function prepojitSoZvazom(studentId, hrac) {
+  const s = studentById(studentId);
+  if (!s) return null;
+  s.sszId = hrac?.ssz_id ?? null;
+  s.fideId = hrac?.fide_id ?? null;
+  if (hrac?.rating != null) {
+    s.rating = Number(hrac.rating);
+    s.ratingAt = todayISO();
+    zapisatRating(s.id, s.rating);
+  }
+  sync.up('students', s);
+  saveNow();
+  return s;
+}
+
+export function odpojitOdZvazu(studentId) {
+  const s = studentById(studentId);
+  if (!s) return null;
+  s.sszId = null; s.fideId = null; s.rating = null; s.ratingAt = null;
+  sync.up('students', s);
+  saveNow();
+  return s;
+}
+
+/** Zápis do histórie — len keď sa číslo naozaj zmenilo. */
+function zapisatRating(studentId, rating, at = todayISO()) {
+  const uz = (db.ratings ?? []).find((r) => r.studentId === studentId && r.at === at);
+  if (uz) { if (uz.rating === rating) return uz; uz.rating = rating; sync.up('ratings', uz); return uz; }
+  const posledny = historiaRatingu(studentId).at(-1);
+  if (posledny?.rating === rating) return null;
+  const zaznam = { id: `rat_${studentId}_${at}`, studentId, at, rating };
+  db.ratings.push(zaznam);
+  sync.up('ratings', zaznam);
+  return zaznam;
+}
+
+/** História ELO od najstaršieho po najnovšie. */
+export const historiaRatingu = (studentId) =>
+  (db.ratings ?? []).filter((r) => r.studentId === studentId).sort((a, b) => a.at.localeCompare(b.at));
+
+/** O koľko sa žiak zlepšil za sezónu — to je to, čo zaujíma rodiča. */
+export function posunRatingu(studentId, obdobie = null) {
+  const { from } = obdobie ?? seasonRange();
+  const h = historiaRatingu(studentId);
+  const ziak = studentById(studentId);
+  // Aktuálne číslo berieme zo žiaka, nie z histórie — história môže mať
+  // zápisy v inom poradí a rozhodujúce je to, čo zväz uvádza teraz.
+  const teraz = ziak?.rating ?? h.at(-1)?.rating ?? null;
+  if (teraz === null || !h.length) return null;
+  const vSezone = h.filter((r) => r.at >= from);
+  const od = (vSezone[0] ?? h[0]).rating;
+  return { od, teraz, posun: teraz - od, meranich: vSezone.length };
+}
+
+/** Koľko žiakov je prepojených a ako staré je ich ELO. */
+export function stavElo() {
+  const prepojeni = db.students.filter((s) => s.sszId);
+  const datumy = prepojeni.map((s) => s.ratingAt).filter(Boolean).sort();
+  return {
+    prepojenych: prepojeni.length,
+    celkom: db.students.length,
+    najstarsie: datumy[0] ?? null,
+    najnovsie: datumy.at(-1) ?? null,
+  };
+}
+
+/** Stiahnutie aktuálnych čísel. Robí to server, appka len počká. */
+export async function obnovitElo() {
+  const v = await api.callFunction('elo', {});
+  const data = await pull();
+  applyServerData(data);
+  return v;
+}
+
 /* ---------- rozvrh tréningov ---------- */
 
 export const DNI = ['nedeľa', 'pondelok', 'utorok', 'streda', 'štvrtok', 'piatok', 'sobota'];
@@ -1684,7 +1768,7 @@ export function importJSON(text) {
   parsed.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
   parsed.groups = parsed.groups?.length ? parsed.groups : GROUPS;
   for (const k of ['trainers', 'sessions', 'attendance', 'schedule', 'events',
-    'eventResults', 'shopItems', 'purchases', 'absences', 'handovers']) {
+    'eventResults', 'shopItems', 'purchases', 'absences', 'handovers', 'ratings']) {
     if (!Array.isArray(parsed[k])) parsed[k] = [];
   }
   for (const k of Object.keys(db)) delete db[k];
@@ -1720,6 +1804,7 @@ export function importJSONToCloud(text) {
     ['purchases', db.purchases],
     ['absences', db.absences],
     ['handovers', db.handovers],
+    ['ratings', db.ratings],
   ];
 
   let pocet = 0;

@@ -239,6 +239,21 @@ export const upsertRows = (table, rows, { onConflict } = {}) =>
     prefer: 'resolution=merge-duplicates,return=minimal',
   });
 
+/** Vyhľadá hráča v kópii matriky zväzu. Online — je to jednorazový úkon
+    pri prepájaní žiaka, nie niečo, čo appka potrebuje offline. */
+export async function najdiVMatrike(otazka) {
+  const q = String(otazka || '').trim();
+  if (q.length < 2) return [];
+  const hladane = encodeURIComponent(`*${q}*`);
+  return restRequest(`ssz_players?select=*&name=ilike.${hladane}&order=name.asc&limit=25`);
+}
+
+/** Kedy sa naposledy sťahovala matrika zväzu. */
+export async function stavMatriky() {
+  const r = await restRequest('ssz_players?select=updated_at&order=updated_at.desc&limit=1');
+  return r?.[0]?.updated_at ?? null;
+}
+
 /**
  * Zavolá serverovú funkciu (Supabase Edge Function). Používa sa na to,
  * čo appka v telefóne robiť nesmie — napríklad zakladať účty, lebo na to

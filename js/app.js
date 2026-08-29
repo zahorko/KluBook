@@ -4,7 +4,7 @@
 import { el, mount, toast } from './ui.js';
 import {
   db, initStore, currentTrainer, openSession, isCloud,
-  applyServerData, syncNow, logout, isLocked,
+  applyServerData, syncNow, logout, isLocked, stavElo, obnovitElo,
 } from './store.js';
 import { state as syncState, onSyncChange, startAutoSync } from './sync.js';
 import { currentRoute, onRefresh, go } from './router.js';
@@ -223,6 +223,24 @@ function navbar(active) {
   );
 }
 
+
+/** Ticho dotiahne ELO, keď je staršie ako tri týždne. Zlyhanie nikoho neruší
+    — appka ostane pri poslednom známom čísle. */
+async function obnovElaKedTreba() {
+  try {
+    const st = stavElo();
+    if (!st.prepojenych) return;
+    const hranica = new Date();
+    hranica.setDate(hranica.getDate() - 21);
+    const staroba = st.najstarsie ? new Date(st.najstarsie) : null;
+    if (staroba && staroba > hranica) return;
+    const data = await obnovitElo();
+    if (data?.zmenenych) console.info(`KluBook: ELO aktualizované u ${data.zmenenych} žiakov.`);
+  } catch (e) {
+    console.warn('KluBook: ELO sa nepodarilo aktualizovať:', e.message);
+  }
+}
+
 /* ---------- štart ---------- */
 window.addEventListener('hashchange', render);
 onRefresh(render);
@@ -233,6 +251,10 @@ onRefresh(render);
   render();
 
   if (isCloud()) {
+    // ELO sa mení raz mesačne — keď je staršie ako tri týždne, dotiahneme ho
+    // ticho na pozadí, nech to tréner nemusí riešiť
+    obnovElaKedTreba();
+
     let poslednyStav = null;
     startAutoSync((data) => {
       applyServerData(data);

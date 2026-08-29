@@ -1,11 +1,12 @@
 /* =========================================================
    Nastavenia — účet, synchronizácia, tréneri, klub, dáta
    ========================================================= */
-import { el, mount, toast, sheet, confirmSheet, field, textInput, selectInput, downloadFile, skopirovat } from '../ui.js';
+import { el, mount, toast, sheet, confirmSheet, field, textInput, selectInput, downloadFile, skopirovat, fmtDate } from '../ui.js';
 import {
   db, isCloud, saveNow, logout, initialsOf, uid, newSalt, hashPin, setDemoPin,
   exportJSON, importJSON, importJSONToCloud, resetAll, clearDemoData, todayISO,
   gamifikacia, updateGamifikacia, xpPreLevel, pridatTrenera,
+  stavElo, obnovitElo,
   updateSettings, updateTrainer, applyServerData, syncNow,
   setDevicePin, hasDevicePin, devicePinEmail, lockApp,
   studentById, groupName, trackingSince,
@@ -28,6 +29,7 @@ export function renderSettings(root, trainer) {
     gamifikaciaCard(),
     scoringCard(),
     rodiciaCard(),
+    eloCard(),
     clubCard(),
     dataCard(),
     versionLine(),
@@ -798,6 +800,57 @@ function rodiciaSheet(text) {
       el('button.btn.btn--ghost.btn--block', { text: 'Zavrieť', onclick: close }),
     );
   });
+}
+
+
+/**
+ * ELO zo zväzu. Sťahuje ho server raz za čas — chess.sk appku v telefóne
+ * priamo k sebe nepustí. Tu je vidieť, ako to stojí, a dá sa to vyvolať ručne.
+ */
+function eloCard() {
+  const st = stavElo();
+  const stav = el('p.small', { style: { margin: 0 } });
+
+  const obnov = el('button.btn.btn--block', {
+    text: '↻ Stiahnuť aktuálne ELO',
+    onclick: async () => {
+      obnov.disabled = true;
+      stav.style.color = 'var(--ink-soft)';
+      stav.textContent = 'Sťahujem maticu zväzu — chvíľu to trvá…';
+      try {
+        const v = await obnovitElo();
+        stav.style.color = 'var(--green)';
+        stav.textContent = `Hotovo — matica má ${v.hracov} hráčov, `
+          + `zmenené ELO u ${v.zmenenych} z ${v.ziakov} prepojených.`;
+        setTimeout(refresh, 1500);
+      } catch (e) {
+        stav.style.color = 'var(--red)';
+        stav.textContent = e.message;
+      } finally {
+        obnov.disabled = false;
+      }
+    },
+  });
+
+  return el('div', {},
+    el('h2.section-title', { text: 'ELO zo zväzu' }),
+    el('div.card.stack', {},
+      el('p.small.muted', { style: { margin: 0 },
+        text: 'Appka si sama sťahuje ELO zo Slovenského šachového zväzu. '
+          + 'Prepojenie žiaka s matrikou nastavíte na jeho karte.' }),
+      el('div.stats', {},
+        el('div.stat', {}, el('div.stat__num', { text: `${st.prepojenych}/${st.celkom}` }),
+          el('div.stat__lab', { text: 'prepojených žiakov' })),
+        el('div.stat', {}, el('div.stat__num', { text: st.najnovsie ? fmtDate(st.najnovsie) : '—' }),
+          el('div.stat__lab', { text: 'naposledy' })),
+      ),
+      obnov,
+      stav,
+      el('p.tiny.faint', { style: { margin: 0 },
+        text: 'Zväz zverejňuje jedno číslo: kým hráč nemá FIDE, je to národné ELO, od 1400 vyššie priamo FIDE. '
+          + 'Keby zväz zmenil formát, appka nič neprepíše a ostane pri poslednom známom čísle.' }),
+    ),
+  );
 }
 
 /* ---------------- dáta ---------------- */

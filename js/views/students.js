@@ -10,6 +10,7 @@ import {
   todayISO, periodOf, updateStudent,
   studentFee, hasOwnFee, ucetZiaka, platbyZiaka, toggleTrainingPaid,
   ospravedlnit, zrusitOspravedlnenie, absencie, anonymizovatZiaka,
+  prepojitSoZvazom, odpojitOdZvazu, historiaRatingu, posunRatingu, obnovitElo,
   absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer, trainsWithClub, everyone, allStudents,
   studentGroupIds, studentGroupNames, durationMinutes,
   studentEvents, studentPointsSummary, studentEventsOutsideSeason, seasonRange, DRUHY_PODUJATI,
@@ -21,6 +22,7 @@ import {
   mailtoHromadne, SABLONY, cistecislo,
 } from '../contact.js';
 import { sklonuj } from './training.js';
+import { najdiVMatrike } from '../api.js';
 
 const uiState = { groupId: null, query: '' };
 
@@ -434,6 +436,145 @@ function ospravedlnitSheet(s, hotovo) {
   });
 }
 
+
+/**
+ * ELO zo zväzu. Rebríček appky meria usilovnosť — koľko dieťa chodí a hrá.
+ * ELO meria silu. Rodič sa pýta na to druhé, preto tu je.
+ */
+function eloSekcia(s) {
+  const historia = historiaRatingu(s.id);
+  const posun = posunRatingu(s.id);
+
+  const obsah = s.sszId
+    ? el('div.card.stack', {},
+      el('div.row.row--between', { style: { alignItems: 'baseline' } },
+        el('div', {},
+          el('div', { style: { fontSize: '26px', fontWeight: '700' }, text: s.rating ?? '—' }),
+          el('div.small.muted', { text: s.rating ? 'ELO podľa zväzu' : 'zväz zatiaľ číslo neuvádza' }),
+        ),
+        posun && posun.posun !== 0
+          ? el('div', { style: { textAlign: 'right' } },
+            el('div.mono', {
+              style: { fontSize: '18px', fontWeight: '700', color: posun.posun > 0 ? 'var(--green)' : 'var(--red)' },
+              text: `${posun.posun > 0 ? '+' : ''}${posun.posun}`,
+            }),
+            el('div.item__sub', { text: 'za sezónu' }),
+          )
+          : null,
+      ),
+      historia.length > 1
+        ? el('div', {},
+          el('div.field__label', { text: 'Ako sa to menilo' }),
+          el('div.card.card--flush.list', {}, historia.slice(-6).reverse().map((r) =>
+            el('div.item', {},
+              el('span.grow', {}, el('div.item__sub', { text: fmtDate(r.at) })),
+              el('span.mono', { style: { fontWeight: '600' }, text: String(r.rating) }),
+            ),
+          )),
+        )
+        : null,
+      el('p.tiny.faint', { style: { margin: 0 },
+        text: `Zväz: č. ${s.sszId}${s.fideId ? ` · FIDE ${s.fideId}` : ''}`
+          + `${s.ratingAt ? ` · naposledy ${fmtDate(s.ratingAt)}` : ''}` }),
+      el('div.row', { style: { gap: '8px' } },
+        s.fideId
+          ? el('a.btn.btn--ghost.btn--sm.grow', {
+            href: `https://ratings.fide.com/profile/${s.fideId}`,
+            target: '_blank', rel: 'noopener', style: { textDecoration: 'none' },
+          }, 'FIDE profil ↗')
+          : null,
+        el('button.btn.btn--ghost.btn--sm', {
+          text: 'Odpojiť',
+          onclick: async () => {
+            const ok = await confirmSheet('Odpojiť od zväzu?',
+              'ELO sa prestane aktualizovať. História ostane.', { danger: true, okLabel: 'Odpojiť' });
+            if (!ok) return;
+            odpojitOdZvazu(s.id);
+            toast('Odpojené');
+            refresh();
+          },
+        }),
+      ),
+    )
+    : el('div.card.stack', {},
+      el('p.small.muted', { style: { margin: 0 },
+        text: 'Keď žiaka prepojíte s matrikou zväzu, appka mu bude sama sťahovať ELO a ukáže, ako sa mení.' }),
+      el('button.btn.btn--block', { text: '🔗 Prepojiť so zväzom', onclick: () => zvazSheet(s) }),
+    );
+
+  return el('div', {}, el('h2.section-title', { text: 'ELO' }), obsah);
+}
+
+/** Vyhľadanie žiaka v matrike zväzu. */
+function zvazSheet(s) {
+  sheet('Nájsť v matrike zväzu', (body, close) => {
+    const vysledky = el('div.stack');
+    const stav = el('p.small.muted', { style: { margin: 0 }, text: 'Zadajte priezvisko.' });
+
+    let posledne = 0;
+    const hladaj = textInput({
+      placeholder: 'Priezvisko…',
+      value: s.name.split(' ').at(-1) ?? '',
+      oninput: () => spusti(),
+    });
+
+    const spusti = async () => {
+      const q = hladaj.value.trim();
+      const moje = ++posledne;
+      if (q.length < 2) { mount(vysledky); stav.textContent = 'Zadajte aspoň dve písmená.'; return; }
+      stav.textContent = 'Hľadám…';
+      try {
+        const najdene = await najdiVMatrike(q);
+        if (moje !== posledne) return;          // medzitým písal ďalej
+        stav.textContent = najdene.length ? `Nájdených ${najdene.length}` : 'Nikto taký v matrike nie je.';
+        mount(vysledky, najdene.map((h) =>
+          el('button.item', {
+            onclick: () => {
+              prepojitSoZvazom(s.id, h);
+              close();
+              toast(`${s.name} prepojený · ELO ${h.rating ?? '—'}`);
+              refresh();
+            },
+          },
+            el('span.grow', {},
+              el('div.item__title', { text: h.name }),
+              el('div.item__sub', { text: `${h.club || 'bez klubu'} · č. ${h.ssz_id}` }),
+            ),
+            el('span.mono', { style: { fontWeight: '700' }, text: String(h.rating ?? '—') }),
+          ),
+        ));
+      } catch (e) {
+        if (moje !== posledne) return;
+        stav.textContent = `Nepodarilo sa: ${e.message}`;
+      }
+    };
+    spusti();
+
+    // Kópia matriky môže byť prázdna (prvé použitie) alebo stará. Nech si ju
+    // tréner nemusí hľadať v Nastaveniach — stiahne sa rovno odtiaľto.
+    const stiahni = el('button.btn.btn--ghost.btn--block', {
+      text: '↻ Stiahnuť maticu zo zväzu',
+      onclick: async () => {
+        stiahni.disabled = true;
+        stav.textContent = 'Sťahujem maticu zväzu — chvíľu to trvá…';
+        try {
+          const v = await obnovitElo();
+          stav.textContent = `Matica stiahnutá — ${v.hracov} hráčov.`;
+          spusti();
+        } catch (e) {
+          stav.textContent = e.message;
+        } finally { stiahni.disabled = false; }
+      },
+    });
+
+    mount(body,
+      el('p.small.muted', { style: { margin: 0 },
+        text: 'Hľadá sa v kópii matriky Slovenského šachového zväzu. Vyberte správneho hráča — podľa neho sa bude ELO aktualizovať.' }),
+      hladaj, stav, vysledky, stiahni,
+    );
+  });
+}
+
 /* ---------------- detail žiaka ---------------- */
 export function renderStudentDetail(root, studentId) {
   const s = studentById(studentId);
@@ -563,6 +704,7 @@ export function renderStudentDetail(root, studentId) {
         : null,
     ),
 
+    eloSekcia(s),
     gamifikaciaSekcia(s),
     eventsSection(s),
 
