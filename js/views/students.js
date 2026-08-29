@@ -3,20 +3,23 @@
    ========================================================= */
 import {
   el, clear, mount, toast, sheet, confirmSheet, field, textInput, selectInput,
-  fmtDate, fmtDayShort, fmtPeriod, fmtHours,
+  fmtDate, fmtDayShort, fmtPeriod, fmtHours, skopirovat,
 } from '../ui.js';
 import {
   db, sortedGroups, groupName, studentsOfGroup, upsertStudent, deleteStudent, studentById,
   todayISO, periodOf, updateStudent,
   studentFee, hasOwnFee, ucetZiaka, platbyZiaka, toggleTrainingPaid,
   ospravedlnit, zrusitOspravedlnenie, absencie, anonymizovatZiaka,
-  absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer, trainsWithClub, everyone,
+  absenceStreak, ABSENCE_ALERT, markContacted, currentTrainer, trainsWithClub, everyone, allStudents,
   studentGroupIds, studentGroupNames, durationMinutes,
   studentEvents, studentPointsSummary, studentEventsOutsideSeason, seasonRange, DRUHY_PODUJATI,
   hracskyProfil, gamifikacia, shopItems, kupit, purchasesOfStudent, zrusitNakup,
 } from '../store.js';
 import { go, refresh } from '../router.js';
-import { contactSheet, telHref, maKontakt, textVymeskavanie } from '../contact.js';
+import {
+  contactSheet, telHref, maKontakt, textVymeskavanie,
+  mailtoHromadne, SABLONY, cistecislo,
+} from '../contact.js';
 import { sklonuj } from './training.js';
 
 const uiState = { groupId: null, query: '' };
@@ -110,11 +113,119 @@ export function renderStudents(root) {
       search,
       listBox,
     ),
-    el('button.btn.btn--block', {
-      text: '＋ Pridať žiaka',
-      onclick: () => studentSheet(null, uiState.groupId),
-    }),
+    el('div.row', { style: { gap: '10px' } },
+      el('button.btn.grow', {
+        text: '＋ Pridať žiaka',
+        onclick: () => studentSheet(null, uiState.groupId),
+      }),
+      el('button.btn.btn--soft', {
+        text: '✉️ Rodičom',
+        title: 'Napísať naraz rodičom celej skupiny',
+        onclick: () => hromadnaSpravaSheet(),
+      }),
+    ),
   ));
+}
+
+/**
+ * Správa rodičom celej skupiny naraz. Appka nič neodosiela — pripraví text
+ * a odovzdá ho mailovej aplikácii. Adresy ide do skrytej kópie, aby rodičia
+ * nevideli kontakty jeden na druhého.
+ */
+function hromadnaSpravaSheet() {
+  sheet('Správa rodičom', (body, close) => {
+    const stav = { groupId: uiState.groupId === 'netrenuju' ? null : uiState.groupId, sablona: 'odpada' };
+    const obsah = el('div.stack');
+
+    const prijemcovia = () => {
+      const zoznam = stav.groupId
+        ? studentsOfGroup(stav.groupId)
+        : allStudents();
+      return {
+        vsetci: zoznam,
+        sEmailom: zoznam.filter((x) => x.contactEmail?.trim()),
+        sTelefonom: zoznam.filter((x) => x.contactPhone?.trim()),
+        bezKontaktu: zoznam.filter((x) => !maKontakt(x)),
+      };
+    };
+
+    const sprava = el('textarea.textarea', { style: { minHeight: '150px' } });
+    const predmet = textInput({ placeholder: 'Predmet e-mailu' });
+
+    const naplnSablonu = () => {
+      const s2 = SABLONY.find((x) => x.id === stav.sablona);
+      const udaje = {
+        klub: db.settings.shortName || db.settings.clubName,
+        trener: currentTrainer()?.name ?? '',
+        skupina: stav.groupId ? groupName(stav.groupId) : '',
+      };
+      sprava.value = s2.text(udaje);
+      predmet.value = s2.predmet;
+    };
+
+    const vykresli = () => {
+      const p = prijemcovia();
+      mount(obsah,
+        el('div.pillbar', {},
+          el('button.pill', {
+            text: 'Všetci', 'aria-pressed': String(!stav.groupId),
+            onclick: () => { stav.groupId = null; vykresli(); },
+          }),
+          sortedGroups().map((g) => el('button.pill', {
+            text: g.name, 'aria-pressed': String(stav.groupId === g.id),
+            onclick: () => { stav.groupId = g.id; naplnSablonu(); vykresli(); },
+          })),
+        ),
+        el('div.card.stack', { style: { background: 'var(--cream-deep)', borderColor: 'transparent', gap: '4px' } },
+          el('div', { style: { fontWeight: '600' },
+            text: `${p.vsetci.length} ${sklonuj(p.vsetci.length, 'žiak', 'žiaci', 'žiakov')} · `
+              + `${p.sEmailom.length} s e-mailom · ${p.sTelefonom.length} s telefónom` }),
+          p.bezKontaktu.length
+            ? el('div.tiny', { style: { color: 'var(--red)' },
+              text: `Bez kontaktu: ${p.bezKontaktu.map((x) => x.name).join(', ')}` })
+            : el('div.tiny.faint', { text: 'Všetci majú vyplnený kontakt.' }),
+        ),
+      );
+    };
+
+    naplnSablonu();
+    vykresli();
+
+    mount(body,
+      obsah,
+      el('div.pillbar', {}, SABLONY.map((x) => el('button.pill', {
+        text: x.nazov, 'aria-pressed': String(stav.sablona === x.id),
+        onclick: () => { stav.sablona = x.id; naplnSablonu(); },
+      }))),
+      field('Predmet', predmet),
+      field('Text správy', sprava),
+
+      el('button.btn.btn--block', {
+        text: '✉️ Otvoriť e-mail všetkým',
+        onclick: () => {
+          const emaily = prijemcovia().sEmailom.map((x) => x.contactEmail.trim());
+          if (!emaily.length) { toast('Nikto v tomto výbere nemá e-mail'); return; }
+          close();
+          window.location.href = mailtoHromadne(emaily, predmet.value, sprava.value);
+        },
+      }),
+      el('button.btn.btn--soft.btn--block', {
+        text: '📋 Skopírovať telefónne čísla',
+        onclick: () => {
+          const cisla = prijemcovia().sTelefonom.map((x) => cistecislo(x.contactPhone));
+          if (!cisla.length) { toast('Nikto v tomto výbere nemá telefón'); return; }
+          skopirovat(cisla.join(', '), `Skopírovaných ${cisla.length} čísel — vložte ich do SMS alebo WhatsAppu`);
+        },
+      }),
+      el('button.btn.btn--ghost.btn--block', {
+        text: '📋 Skopírovať text správy',
+        onclick: () => skopirovat(sprava.value, 'Text skopírovaný'),
+      }),
+      el('p.tiny.faint', { style: { margin: 0 },
+        text: 'E-mail sa otvorí s adresami v skrytej kópii, takže rodičia nevidia kontakty jeden na druhého. '
+          + 'Nič sa neodošle samo — odoslanie potvrdíte vy.' }),
+    );
+  });
 }
 
 

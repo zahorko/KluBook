@@ -86,6 +86,56 @@ const podpis = (trener, klub) => `Dobrý deň, tu ${trener} — ${klub}.`;
  * Je to splnenie povinnosti rodiča informovať. Text si pred prvým použitím
  * prejdite a doplňte, čo je vo vašom klube inak.
  */
+/**
+ * Hromadný e-mail. Adresy dávame do skrytej kópie — rodičia si navzájom
+ * nemajú čo vidieť adresy, a je to aj slušnosť voči ich údajom.
+ */
+export const mailtoHromadne = (emaily, subject, body) =>
+  `mailto:?bcc=${encodeURIComponent(emaily.join(','))}`
+  + `&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+/** Hotové texty na to, čo tréner píše najčastejšie. */
+export const SABLONY = [
+  {
+    id: 'odpada',
+    nazov: 'Tréning odpadá',
+    predmet: 'Tréning odpadá',
+    text: ({ klub, trener, skupina }) =>
+      `Dobrý deň, tu ${trener} z ${klub}.\n\n`
+      + `Najbližší tréning${skupina ? ` skupiny ${skupina}` : ''} odpadá. `
+      + `O náhradnom termíne dám vedieť.\n\nĎakujem za pochopenie.`,
+  },
+  {
+    id: 'zmena',
+    nazov: 'Zmena času alebo miesta',
+    predmet: 'Zmena tréningu',
+    text: ({ klub, trener, skupina }) =>
+      `Dobrý deň, tu ${trener} z ${klub}.\n\n`
+      + `Tréning${skupina ? ` skupiny ${skupina}` : ''} sa výnimočne presúva. `
+      + `Nový čas a miesto: \n\nĎakujem.`,
+  },
+  {
+    id: 'turnaj',
+    nazov: 'Pozvánka na turnaj',
+    predmet: 'Pozvánka na turnaj',
+    text: ({ klub, trener }) =>
+      `Dobrý deň, tu ${trener} z ${klub}.\n\n`
+      + `Pozývame deti na turnaj:\n`
+      + `• kedy: \n• kde: \n• štartovné: \n\n`
+      + `Ak má vaše dieťa záujem, dajte mi prosím vedieť do .`,
+  },
+  {
+    id: 'platby',
+    nazov: 'Pripomienka platieb',
+    predmet: 'Úhrada za tréningy',
+    text: ({ klub, trener }) =>
+      `Dobrý deň, tu ${trener} z ${klub}.\n\n`
+      + `Poprosím o úhradu za odtrénované hodiny. Sumu za vaše dieťa vám rád `
+      + `upresním — platí sa za tréningy, na ktorých bolo.\n\nĎakujem pekne.`,
+  },
+  { id: 'vlastny', nazov: 'Vlastný text', predmet: '', text: () => '' },
+];
+
 export const textPreRodicov = ({ klub, kontakt = '', roky = 3 }) =>
   `INFORMÁCIA O SPRACÚVANÍ OSOBNÝCH ÚDAJOV\n`
   + `${klub}\n\n`

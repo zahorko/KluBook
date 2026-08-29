@@ -1,7 +1,7 @@
 /* =========================================================
    Nastavenia — účet, synchronizácia, tréneri, klub, dáta
    ========================================================= */
-import { el, mount, toast, sheet, confirmSheet, field, textInput, selectInput, downloadFile } from '../ui.js';
+import { el, mount, toast, sheet, confirmSheet, field, textInput, selectInput, downloadFile, skopirovat } from '../ui.js';
 import {
   db, isCloud, saveNow, logout, initialsOf, uid, newSalt, hashPin, setDemoPin,
   exportJSON, importJSON, importJSONToCloud, resetAll, clearDemoData, todayISO,
@@ -786,15 +786,7 @@ function rodiciaSheet(text) {
       pole,
       el('button.btn.btn--block', {
         text: '📋 Skopírovať',
-        onclick: async () => {
-          try {
-            await navigator.clipboard.writeText(pole.value);
-            toast('Skopírované — vložte do e-mailu alebo dokumentu');
-          } catch {
-            pole.select();
-            toast('Označené — skopírujte klávesmi');
-          }
-        },
+        onclick: () => skopirovat(pole.value, 'Skopírované — vložte do e-mailu alebo dokumentu'),
       }),
       el('button.btn.btn--ghost.btn--block', {
         text: '⤓ Uložiť ako súbor',

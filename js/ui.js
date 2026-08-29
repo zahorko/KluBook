@@ -169,6 +169,31 @@ export function selectInput(options, props = {}) {
 }
 
 /* ---------- CSV export ---------- */
+/**
+ * Skopíruje text do schránky. Schránka je vrtošivá — prehliadač ju odmietne
+ * bez priameho ťuknutia, na starších telefónoch ju nemá vôbec. Preto pri
+ * neúspechu text ukážeme označený, nech sa dá skopírovať ručne.
+ */
+export async function skopirovat(text, hlaska = 'Skopírované') {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(hlaska);
+    return true;
+  } catch {
+    sheet('Skopírujte ručne', (body) => {
+      const pole = el('textarea.textarea', { style: { minHeight: '160px' } }, text);
+      mount(body,
+        el('p.small.muted', { style: { margin: 0 },
+          text: 'Prehliadač nepustil kopírovanie. Text je označený — skopírujte ho podržaním prsta alebo klávesmi.' }),
+        pole,
+      );
+      pole.focus();
+      pole.select();
+    });
+    return false;
+  }
+}
+
 export function downloadCSV(filename, rows) {
   const esc = (v) => {
     const s = v === null || v === undefined ? '' : String(v);
