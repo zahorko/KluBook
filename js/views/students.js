@@ -840,6 +840,20 @@ export function studentSheet(student, defaultGroupId, predvyplnene = null) {
   sheet(isNew ? 'Nový žiak' : 'Upraviť žiaka', (body, close) => {
     const zoZvazu = { hrac: predvyplnene?.zvaz ?? null };
     const p0 = predvyplnene ?? {};
+    const zvazRiadok = el('p.tiny', {
+      style: {
+        margin: '-4px 2px 0', color: 'var(--green)',
+        display: predvyplnene?.zvaz ? '' : 'none',
+      },
+      text: predvyplnene?.zvaz
+        ? `Zo zväzu: č. ${predvyplnene.zvaz.ssz_id}`
+          + `${predvyplnene.zvaz.rating ? ` · ELO ${predvyplnene.zvaz.rating}` : ' · bez ELO'}`
+        : '',
+    });
+    const pridanych = [];
+    const pocitadlo = el('p.small', {
+      style: { margin: '4px 2px 0', color: 'var(--green)', display: 'none' },
+    });
     const name = textInput({ value: p0.name ?? student?.name ?? '', placeholder: 'Meno a priezvisko' });
     const trenuje = el('input', {
       type: 'checkbox',
@@ -882,6 +896,40 @@ export function studentSheet(student, defaultGroupId, predvyplnene = null) {
     const skupinyBox = el('div', { style: { display: (student ? trainsWithClub(student) : !zoZalozkyNetrenuju) ? '' : 'none' } },
       field('Skupiny (môže byť vo viacerých)', groupBox));
 
+    /** Uloží žiaka. Vráti ho, alebo nič, keď formulár nie je vyplnený. */
+    const uloz = () => {
+      if (!name.value.trim()) { toast('Zadajte meno žiaka'); return null; }
+      if (trenuje.checked && !zvolene.size) { toast('Vyberte aspoň jednu skupinu'); return null; }
+      const z = upsertStudent({
+        id: student?.id,
+        name: name.value.trim(),
+        groupIds: trenuje.checked ? [...zvolene] : [],
+        trains: trenuje.checked,
+        contactName: contactName.value.trim(),
+        contactPhone: phone.value.trim(),
+        contactEmail: email.value.trim(),
+        startDate: start.value || todayISO(),
+        monthlyFee: fee.value === '' ? null : Number(fee.value),
+        note: note.value.trim(),
+        active: student?.active ?? true,
+      });
+      if (zoZvazu.hrac) prepojitSoZvazom(z.id, zoZvazu.hrac);
+      return z;
+    };
+
+    /** Pripraví formulár na ďalšie dieťa. Skupina, dátum nástupu a cena
+        ostávajú — tie sú pre celú skupinu rovnaké. Prepojenie na zväz sa
+        musí zahodiť, inak by ďalšie dieťa dostalo cudzie ELO. */
+    const vycisti = () => {
+      name.value = '';
+      contactName.value = '';
+      phone.value = '';
+      email.value = '';
+      note.value = '';
+      zoZvazu.hrac = null;
+      zvazRiadok.style.display = 'none';
+    };
+
     mount(body,
       // Kto je v matrike zväzu, toho netreba prepisovať ručne — meno, číslo
       // aj ELO prídu odtiaľ. Pre začiatočníkov, ktorí registrovaní nie sú,
@@ -901,11 +949,7 @@ export function studentSheet(student, defaultGroupId, predvyplnene = null) {
           }, name.value.trim().split(' ').at(-1) ?? '');
         },
       }) : null,
-      zoZvazu.hrac
-        ? el('p.tiny', { style: { margin: '-4px 2px 0', color: 'var(--green)' },
-          text: `Zo zväzu: č. ${zoZvazu.hrac.ssz_id}`
-            + `${zoZvazu.hrac.rating ? ` · ELO ${zoZvazu.hrac.rating}` : ' · bez ELO'}` })
-        : null,
+      zvazRiadok,
       field('Meno *', name),
       el('label.row', {
         style: { gap: '10px', padding: '10px 12px', border: '1px solid var(--cream-line)', borderRadius: 'var(--r-md)', background: 'var(--white)', cursor: 'pointer' },
@@ -927,22 +971,8 @@ export function studentSheet(student, defaultGroupId, predvyplnene = null) {
         text: isNew ? 'Pridať žiaka' : 'Uložiť zmeny',
         style: { marginTop: '8px' },
         onclick: () => {
-          if (!name.value.trim()) { toast('Zadajte meno žiaka'); return; }
-          if (trenuje.checked && !zvolene.size) { toast('Vyberte aspoň jednu skupinu'); return; }
-          const novy = upsertStudent({
-            id: student?.id,
-            name: name.value.trim(),
-            groupIds: trenuje.checked ? [...zvolene] : [],
-            trains: trenuje.checked,
-            contactName: contactName.value.trim(),
-            contactPhone: phone.value.trim(),
-            contactEmail: email.value.trim(),
-            startDate: start.value || todayISO(),
-            monthlyFee: fee.value === '' ? null : Number(fee.value),
-            note: note.value.trim(),
-            active: student?.active ?? true,
-          });
-          if (zoZvazu.hrac) prepojitSoZvazom(novy.id, zoZvazu.hrac);
+          const novy = uloz();
+          if (!novy) return;
           close();
           toast(isNew
             ? (zoZvazu.hrac ? `Žiak pridaný · ELO ${zoZvazu.hrac.rating ?? '—'}` : 'Žiak pridaný')
@@ -950,6 +980,23 @@ export function studentSheet(student, defaultGroupId, predvyplnene = null) {
           refresh();
         },
       }),
+
+      /* Na úvodnom otvorení klubu sa zapisuje dvadsať detí za sebou, keď
+         okolo stoja rodičia. Formulár preto ostane otvorený a skupina
+         predvolená — mení sa len meno. */
+      isNew ? el('button.btn.btn--soft.btn--block', {
+        text: 'Uložiť a pridať ďalšieho',
+        onclick: () => {
+          const novy = uloz();
+          if (!novy) return;
+          pridanych.push(novy.name);
+          vycisti();
+          pocitadlo.textContent = `✓ ${novy.name} pridaný · spolu ${pridanych.length}`;
+          pocitadlo.style.display = '';
+          name.focus();
+        },
+      }) : null,
+      isNew ? pocitadlo : null,
     );
   });
 }
