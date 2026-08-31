@@ -17,6 +17,7 @@ import {
   oznacitOdovzdane, zrusitNakup, trainsWithClub, isInGroup, todayISO,
   eventsInRange, xpNaDalsiLevel,
 } from '../store.js';
+import { odznakEl, hodnost, rozsahHodnosti, rozsahKratky, HODNOSTI } from '../odznaky.js';
 import { go, refresh } from '../router.js';
 import { eventsSection, seasonSheet } from './points.js';
 import { sklonuj } from './training.js';
@@ -74,6 +75,32 @@ function tabulkaTab() {
       // Podium ukazujeme len deťom — trénerovi by len zopakovalo prvé tri
       // riadky tabuľky, ktoré aj tak majú medaily.
       : uiState.preDeti ? spickaPreDeti(hraci) : plnaTabulka(hraci),
+    hodnostiKarta(hraci),
+  );
+}
+
+/**
+ * Rebrík hodností. Bez neho je odznak len ozdoba — dieťa musí vidieť
+ * celú cestu aj to, kde na nej stojí, inak nemá na čo mieriť.
+ */
+function hodnostiKarta(hraci) {
+  const obsadene = new Set(hraci.map((r) => hodnost(r.level).id));
+  return el('div', {},
+    el('h2.section-title', { text: 'Hodnosti' }),
+    el('div.card', {},
+      el('div.hodnosti', {}, HODNOSTI.map((h) => el('div.hodnost', {
+        style: obsadene.has(h.id) ? { background: h.svetla } : {},
+        title: rozsahHodnosti(h),
+      },
+        odznakEl(h.od, { velkost: 36 }),
+        el('div.hodnost__meno', { text: h.nazov }),
+        el('div.hodnost__rozsah', { text: rozsahKratky(h) }),
+      ))),
+      uiState.preDeti ? null : el('p.tiny.faint', { style: { margin: '10px 2px 0' },
+        text: 'Podfarbené sú hodnosti, ktoré už niekto v klube má. Hodnosť sa mení sama '
+          + 'podľa levelu — pri jednom až dvoch tréningoch týždenne postúpi dieťa '
+          + 'približne raz za pár mesiacov.' }),
+    ),
   );
 }
 
@@ -141,9 +168,10 @@ function podium(top) {
         onclick: () => go(`/ziaci/${r.student.id}`),
       },
         el('span', { style: { fontSize: '26px' }, text: MEDAILY[i] }),
+        odznakEl(r.level, { velkost: 42, class: 'odznak--velky' }),
         el('span.grow', {},
           el('div', { style: { fontWeight: '600', fontSize: '16px' }, text: r.student.name }),
-          el('div.item__sub', { text: `Level ${r.level} · ${r.gold} 💰` }),
+          el('div.item__sub.item__sub--riadok', { text: `${hodnost(r.level).nazov} ${r.level} · ${r.gold} 💰` }),
         ),
         el('span', { style: { textAlign: 'right' } },
           el('div.mono', { style: { fontWeight: '700', fontSize: '18px' },
@@ -192,13 +220,16 @@ function riadok(r) {
       },
       text: r.poradie <= 3 ? MEDAILY[r.poradie - 1] : `${r.poradie}.`,
     }),
+    odznakEl(r.level, { velkost: 30 }),
     el('span.grow', {},
       el('div.item__title', {}, r.student.name,
         trainsWithClub(r.student) ? null : el('span.tag', { text: 'netrénuje', style: { marginLeft: '8px' } })),
-      el('div.item__sub', {
-        text: `Level ${r.level}`
-          + ` · ${r.sezona.podujatia} ${sklonuj(r.sezona.podujatia, 'podujatie', 'podujatia', 'podujatí')}`
-          + ` · ${r.sezona.treningy} ${sklonuj(r.sezona.treningy, 'tréning', 'tréningy', 'tréningov')}`,
+      el('div.item__sub.item__sub--riadok', {
+        text: `${hodnost(r.level).nazov} ${r.level}`
+          + ` · ${r.sezona.treningy} ${sklonuj(r.sezona.treningy, 'tréning', 'tréningy', 'tréningov')}`
+          + (r.sezona.podujatia
+            ? ` · ${r.sezona.podujatia} ${sklonuj(r.sezona.podujatia, 'podujatie', 'podujatia', 'podujatí')}`
+            : ''),
       }),
     ),
     el('span', { style: { textAlign: 'right' } },
@@ -298,9 +329,10 @@ function kupitSheet(item) {
         } catch (e) { toast(e.message); }
       } : undefined,
     },
+      odznakEl(r.level, { velkost: 30 }),
       el('span.grow', {},
         el('div.item__title', { text: r.student.name }),
-        el('div.item__sub', { text: `Level ${r.level} · zostatok ${r.gold} 💰` }),
+        el('div.item__sub.item__sub--riadok', { text: `${hodnost(r.level).nazov} ${r.level} · zostatok ${r.gold} 💰` }),
       ),
       dostupne ? el('span.chev', { text: '›' }) : el('span.tiny.faint', { text: `chýba ${item.price - r.gold}` }),
     );

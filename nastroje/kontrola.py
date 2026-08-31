@@ -1,7 +1,10 @@
 """KONTROLA KODU — spustite z korena projektu:  python3 nastroje/kontrola.py
 
-Hlada identifikatory, ktore sa pouzivaju, ale nie su nikde definovane ani importovane.
-Presne toto sposobilo bielu obrazovku: zmazana funkcia, na ktoru este niekto ukazoval."""
+Hlada dve veci, ktore obe skoncia bielou obrazovkou:
+  1. identifikatory, ktore sa pouzivaju, ale nie su nikde definovane ani importovane
+     (zmazana funkcia, na ktoru este niekto ukazoval),
+  2. importy z vlastnych suborov, ktore cielovy subor vobec neexportuje
+     (preklep v nazve alebo export, ktory sa zabudlo dopisat)."""
 import re, pathlib, sys
 
 GLOBALY = set('''
@@ -65,8 +68,49 @@ def analyzuj(cesta):
             podozrive.setdefault(n, s[:m.start()].count('\n') + 1)
     return podozrive
 
+def exportovane(cesta):
+    """Nazvy, ktore subor naozaj exportuje."""
+    s = cesta.read_text()
+    von = set()
+    for m in re.finditer(r'export\s+(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)', s):
+        von.add(m.group(1))
+    for m in re.finditer(r'export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)', s):
+        von.add(m.group(1))
+    # export { a, b as c }
+    for m in re.finditer(r'export\s*\{([^}]*)\}', s):
+        for kus in m.group(1).split(','):
+            kus = kus.split(' as ')[-1].strip()
+            if re.fullmatch(r'[A-Za-z_$][\w$]*', kus): von.add(kus)
+    for m in re.finditer(r'export\s+(?:const|let|var)\s*\{([^}]*)\}\s*=', s):
+        for kus in m.group(1).split(','):
+            kus = kus.split(':')[-1].split('=')[0].strip()
+            if re.fullmatch(r'[A-Za-z_$][\w$]*', kus): von.add(kus)
+    return von
+
+
+def chybajuceExporty(cesta):
+    """Importy z vlastnych suborov, ktore cielovy subor neexportuje."""
+    s = cesta.read_text()
+    chyby = []
+    for m in re.finditer(r'import\s*\{([^}]*)\}\s*from\s*[\'"](\.[^\'"]+)[\'"]', s):
+        ciel = (cesta.parent / m.group(2)).resolve()
+        if not ciel.exists():
+            chyby.append((s[:m.start()].count('\n') + 1, f'subor {m.group(2)} neexistuje'))
+            continue
+        mame = exportovane(ciel)
+        for kus in m.group(1).split(','):
+            meno = kus.split(' as ')[0].strip()
+            if meno and meno not in mame:
+                chyby.append((s[:m.start()].count('\n') + 1,
+                              f'{meno} — {ciel.name} to neexportuje'))
+    return chyby
+
+
 celkom = 0
 for f in sorted(pathlib.Path('js').rglob('*.js')) + [pathlib.Path('sw.js')]:
+    for r, popis in chybajuceExporty(f):
+        print(f'{f}:{r}  →  {popis}')
+        celkom += 1
     naslo = analyzuj(f)
     for n, r in sorted(naslo.items(), key=lambda x: x[1]):
         print(f'{f}:{r}  →  {n}')

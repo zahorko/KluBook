@@ -17,6 +17,7 @@ import { changePassword, session, lockHours, setLockHours, hasVault } from '../a
 import {
   state as syncState, onSyncChange, resetSyncState, retryFailed, clearFailed, clearSchemaWarning,
 } from '../sync.js';
+import { odznakEl, hodnost } from '../odznaky.js';
 import { go, refresh } from '../router.js';
 import { textPreRodicov } from '../contact.js';
 
@@ -603,10 +604,12 @@ function gamifikaciaCard() {
     },
   }));
 
-  // ukážka, čo tie čísla znamenajú — inak sú to len čísla
+  // ukážka, čo tie čísla znamenajú — inak sú to len čísla.
+  // Hodnosť je pri ladení dôležitejšia než level: to je to, čo deti vidia.
   const ukazka = [2, 5, 10, 20].map((lvl) =>
-    el('div.row.row--between', {},
-      el('span.small', { text: `Level ${lvl}` }),
+    el('div.row', { style: { gap: '10px', alignItems: 'center' } },
+      odznakEl(lvl, { velkost: 26 }),
+      el('span.small.grow', { text: `Level ${lvl} · ${hodnost(lvl).nazov}` }),
       el('span.mono.small', { text: `${xpPreLevel(lvl)} XP` }),
     ));
 

@@ -429,3 +429,19 @@ table.data th:first-child, table.data td:first-child {
 @media (min-width: 900px) {
   .nav { grid-template-columns: repeat(6, minmax(0, 110px)); justify-content: center; }
 }
+
+/* ---------- odznaky hodností ---------- */
+.odznak { display: inline-flex; flex: none; line-height: 0; }
+.odznak svg { display: block; }
+/* v premietacom režime nech postup na vyššiu hodnosť bije do očí */
+.odznak--velky { filter: drop-shadow(0 2px 6px rgba(43, 35, 32, .18)); }
+
+.hodnosti { display: flex; gap: 3px; }
+.hodnost {
+  flex: 1 1 0; min-width: 0; text-align: center;
+  padding: 8px 2px 7px; border-radius: var(--r-md);
+}
+.hodnost__meno { font-size: 11px; font-weight: 600; margin-top: 4px; }
+.hodnost__rozsah { font-size: 10px; color: var(--ink-faint); }
+/* v rebríčku sa podriadok radšej oreže, než by mal riadok narásť na dvojnásobok */
+.item__sub--riadok { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

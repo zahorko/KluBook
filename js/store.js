@@ -1226,6 +1226,20 @@ export function stavHraca(studentId) {
   return { ...levelZoXp(z.xp), xp: z.xp, seria: z.seria, serie: z.serie };
 }
 
+/**
+ * To isté naraz pre viacerých. Jeden prechod namiesto jedného na žiaka —
+ * používa sa pri ukončení tréningu, kde sa naraz mení level celej skupine.
+ */
+export function stavHracov(studentIds) {
+  const t = xpTabulka();
+  const out = new Map();
+  for (const id of studentIds) {
+    const z = t.get(id) ?? prazdnyZaznam(id);
+    out.set(id, { ...levelZoXp(z.xp), xp: z.xp, seria: z.seria, serie: z.serie });
+  }
+  return out;
+}
+
 /** Karta jedného hráča — to isté, len pre neho. */
 export function hracskyProfil(studentId, obdobie = null) {
   return rebricek({ obdobie }).find((r) => r.student.id === studentId) ?? null;

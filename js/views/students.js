@@ -16,6 +16,7 @@ import {
   studentEvents, studentPointsSummary, studentEventsOutsideSeason, seasonRange, DRUHY_PODUJATI,
   hracskyProfil, gamifikacia, shopItems, kupit, purchasesOfStudent, zrusitNakup,
 } from '../store.js';
+import { odznakEl, hodnost, dalsiaHodnost } from '../odznaky.js';
 import { go, refresh } from '../router.js';
 import {
   contactSheet, telHref, maKontakt, textVymeskavanie,
@@ -248,13 +249,19 @@ function gamifikaciaSekcia(s) {
   const pruh = el('div.bar', { style: { marginTop: '10px' } },
     el('div.bar__fill.bar__fill--good', { style: { width: `${p.postup}%` } }));
 
+  const h = hodnost(p.level);
+  const dalsia = dalsiaHodnost(p.level);
+
   return el('div', {},
-    el('h2.section-title', { text: 'Level a goldy' }),
+    el('h2.section-title', { text: 'Hodnosť a goldy' }),
     el('div.card.stack', {},
-      el('div.row.row--between', { style: { alignItems: 'baseline' } },
-        el('div', {},
-          el('div', { style: { fontSize: '26px', fontWeight: '700' }, text: `Level ${p.level}` }),
-          el('div.small.muted', { text: `${p.poradie}. v klube tejto sezóny` }),
+      el('div.row.row--between', { style: { alignItems: 'center' } },
+        el('div.row', { style: { gap: '12px', alignItems: 'center' } },
+          odznakEl(p.level, { velkost: 62, class: 'odznak--velky' }),
+          el('div', {},
+            el('div', { style: { fontSize: '24px', fontWeight: '700', color: h.farba }, text: h.nazov }),
+            el('div.small.muted', { text: `level ${p.level} · ${p.poradie}. v klube tejto sezóny` }),
+          ),
         ),
         el('div', { style: { textAlign: 'right' } },
           el('div.mono', {
@@ -272,6 +279,21 @@ function gamifikaciaSekcia(s) {
           text: p.maxDosiahnuty ? 'najvyšší level' : `do levelu ${p.level + 1} chýba ${p.chyba} XP`,
         }),
       ),
+      // najbližší veľký cieľ — level stúpa často, hodnosť je udalosť
+      dalsia
+        ? el('div.row', {
+          style: {
+            gap: '10px', alignItems: 'center', background: dalsia.svetla,
+            borderRadius: 'var(--r-md)', padding: '8px 12px',
+          },
+        },
+          odznakEl(dalsia.od, { velkost: 30 }),
+          el('span.small', {},
+            'Ďalšia hodnosť ', el('strong', { text: dalsia.nazov, style: { color: dalsia.farba } }),
+            ` — od levelu ${dalsia.od}, to je ${dalsia.od - p.level} `,
+            sklonuj(dalsia.od - p.level, 'level', 'levely', 'levelov'), ' vyššie.'),
+        )
+        : el('div.small.muted', { text: `${h.nazov} je najvyššia hodnosť v klube.` }),
       el('div.stats', { style: { marginTop: '4px' } },
         el('div.stat', {}, el('div.stat__num', { text: String(p.sezona.treningy) }),
           el('div.stat__lab', { text: `tréningov · ${g.xpZaTrening} XP` })),

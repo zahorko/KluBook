@@ -9,7 +9,7 @@ import {
   db, sortedGroups, groupName, trainerName, openSession, unfinishedSessions,
   startSession, endSession,
   addManualSession, deleteSession, studentsOfGroup, attendanceOfSession, setAttendance,
-  sessionRoster, pridatelniDoTreningu, studentGroupNames, stavHraca, gamifikacia,
+  sessionRoster, pridatelniDoTreningu, studentGroupNames, stavHraca, stavHracov, gamifikacia,
   removeAttendance,
   durationMinutes, todayISO, nowHM, periodOf, sessionsInRange, updateSession,
   studentFee, jeZaplatene, toggleTrainingPaid, vybraneZaTrening,
@@ -17,6 +17,7 @@ import {
   droppingStudents, markContacted, currentTrainer,
   todaysSchedule, missingSessions, markScheduleSkipped, DNI,
 } from '../store.js';
+import { hodnost } from '../odznaky.js';
 import { go, refresh } from '../router.js';
 import { contactSheet, telHref, maKontakt, textVymeskavanie } from '../contact.js';
 
@@ -279,10 +280,16 @@ function endSessionSheet(session, hotovo) {
           text: 'Ukončiť tréning',
           onclick: () => {
             session.note = tema.input.value.trim();
+            // XP z neukončeného tréningu sa nerátajú, takže levely stúpnu
+            // až týmto ťuknutím — postup treba porovnať okolo neho
+            const ucastnici = sessionRoster(session).map((z) => z.id);
+            const pred = stavHracov(ucastnici);
             const s = endSession(session.id, cas.value || nowHM());
+            const po = stavHracov(ucastnici);
             close();
             stopClock();
             toast(`Tréning ukončený · ${fmtHours(durationMinutes(s))}`);
+            oznamPostupy(postupyZoZmeny(session, pred, po));
             hotovo?.();
           },
         }),
@@ -605,23 +612,69 @@ function zapisSDochadzkou(sessionId, student, present, { ticho = false } = {}) {
     return null;
   }
   const po = stavHraca(student.id);
-  const postup = po.level > pred.level ? { meno: student.name, level: po.level } : null;
+  // nová hodnosť je zriedkavá udalosť — nesmie zapadnúť medzi obyčajné level upy
+  const novaHodnost = hodnost(po.level).id !== hodnost(pred.level).id ? hodnost(po.level) : null;
+  const postup = po.level > pred.level
+    ? { meno: student.name, level: po.level, hodnost: novaHodnost }
+    : null;
 
   if (postup && !ticho) {
-    toast(`🎉 ${student.name} má level ${po.level} · +${gamifikacia().goldZaLevel} 💰`, { oslava: true });
+    toast(novaHodnost
+      ? `🎉 ${student.name} je ${novaHodnost.nazov}! · level ${po.level} · +${gamifikacia().goldZaLevel} 💰`
+      : `🎉 ${student.name} má level ${po.level} · +${gamifikacia().goldZaLevel} 💰`, { oslava: true });
   } else if (!ticho && present && po.seria && po.seria % gamifikacia().seriaDlzka === 0) {
     toast(`🔥 ${student.name} — ${po.seria} tréningov po sebe · +${gamifikacia().seriaBonus} XP`, { oslava: true });
   }
   return postup;
 }
 
-/** Keď naraz postúpi viac detí, nech to nie je päť hlášok za sebou. */
+/** Kto medzi dvoma meraniami postúpil — a či rovno na novú hodnosť. */
+function postupyZoZmeny(session, pred, po) {
+  const out = [];
+  for (const student of sessionRoster(session)) {
+    const a = pred.get(student.id);
+    const b = po.get(student.id);
+    if (!a || !b || b.level <= a.level) continue;
+    out.push({
+      meno: student.name,
+      level: b.level,
+      hodnost: hodnost(b.level).id !== hodnost(a.level).id ? hodnost(b.level) : null,
+    });
+  }
+  return out;
+}
+
+/**
+ * Jedno hlásenie, nie päť. Nová hodnosť má prednosť pred obyčajným
+ * level upom — je zriedkavá a je to to, čo dieťa počuje najradšej.
+ * Mená sa po troch skracujú, inak by pri pätnástich deťoch hláška
+ * zaplnila celú obrazovku a nikto by ju nedočítal.
+ */
 function oznamPostupy(postupy) {
+  if (!postupy.length) return;
+
+  const zoznam = (polozky) => {
+    const vidno = polozky.slice(0, 3).join(', ');
+    const zvysok = polozky.length - 3;
+    return zvysok > 0
+      ? `${vidno} a ${zvysok} ${sklonuj(zvysok, 'ďalší', 'ďalší', 'ďalších')}`
+      : vidno;
+  };
+
+  const nove = postupy.filter((p) => p.hodnost);
+  if (nove.length === 1 && postupy.length === 1) {
+    toast(`🎉 ${nove[0].meno} je ${nove[0].hodnost.nazov}! · level ${nove[0].level}`, { oslava: true });
+    return;
+  }
+  if (nove.length) {
+    toast(`🎉 Nová hodnosť — ${zoznam(nove.map((p) => `${p.meno}: ${p.hodnost.nazov}`))}`, { oslava: true });
+    return;
+  }
   if (postupy.length === 1) {
     toast(`🎉 ${postupy[0].meno} má level ${postupy[0].level}`, { oslava: true });
     return;
   }
-  toast(`🎉 Postúpili: ${postupy.map((p) => `${p.meno} (${p.level})`).join(', ')}`, { oslava: true });
+  toast(`🎉 Postúpili: ${zoznam(postupy.map((p) => `${p.meno} (${p.level})`))}`, { oslava: true });
 }
 
 /* ---------------- hárky ---------------- */
