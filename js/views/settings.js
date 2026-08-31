@@ -807,7 +807,7 @@ function rodiciaCard() {
           + 'informovať ich musíte aj vtedy, keď súhlas nepotrebujete.' }),
       el('button.btn.btn--block', { onclick: () => rodiciaSheet(text()) },
         ikona('dokument', { velkost: 16 }), 'Zobraziť text'),
-      el('p.tiny.faint', { style: { margin: 0 },
+      el('p.hint', {
         text: 'Text je pripravený na bežný šachový krúžok. Pred prvým použitím si ho prejdite '
           + 'a doplňte, čo máte inak. Nie je to právne poradenstvo.' }),
     ),
@@ -879,7 +879,7 @@ function eloCard() {
       ),
       obnov,
       stav,
-      el('p.tiny.faint', { style: { margin: 0 },
+      el('p.hint', {
         text: 'Zväz zverejňuje jedno číslo: kým hráč nemá FIDE, je to národné ELO, od 1400 vyššie priamo FIDE. '
           + 'Keby zväz zmenil formát, appka nič neprepíše a ostane pri poslednom známom čísle.' }),
     ),

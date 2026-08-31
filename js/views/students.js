@@ -790,7 +790,7 @@ export function renderStudentDetail(root, studentId) {
         el('h2.section-title', { text: 'Platby za tréningy' }),
         el('div.card.stack', {},
           payBox,
-          el('p.tiny.faint', { style: { marginBottom: 0 },
+          el('p.hint', {
             text: 'Ťuknutím na tréning prepnete, či zaň zaplatil. Platí sa len za tréningy, na ktorých bol.' }),
         ),
       )
