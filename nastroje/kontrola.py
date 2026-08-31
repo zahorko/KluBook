@@ -4,7 +4,9 @@ Hlada dve veci, ktore obe skoncia bielou obrazovkou:
   1. identifikatory, ktore sa pouzivaju, ale nie su nikde definovane ani importovane
      (zmazana funkcia, na ktoru este niekto ukazoval),
   2. importy z vlastnych suborov, ktore cielovy subor vobec neexportuje
-     (preklep v nazve alebo export, ktory sa zabudlo dopisat)."""
+     (preklep v nazve alebo export, ktory sa zabudlo dopisat),
+  3. tlacidla bez viditelneho popisu - el('button...', {...}) bez text/html
+     a bez deti. Take tlacidlo sa vykresli ako prazdny pruh."""
 import re, pathlib, sys
 
 GLOBALY = set('''
@@ -106,9 +108,35 @@ def chybajuceExporty(cesta):
     return chyby
 
 
+def prazdneTlacidla(cesta):
+    """el('button…', { … }) bez text/html a bez deti = prazdny pruh v appke."""
+    s = cesta.read_text()
+    chyby = []
+    # len viditelne tlacidla triedy .btn — ikonove tlacidla (.iconbtn) popis
+    # niesu povinne, ich nazov nesie aria-label alebo title
+    for m in re.finditer(r"el\(\s*'((?:button|a)[.\w-]*\bbtn\b[.\w-]*)'\s*,\s*\{", s):
+        i = m.end() - 1          # ukazuje na { vlastnosti
+        hlbka = 0
+        for j in range(i, len(s)):
+            if s[j] in '{[(': hlbka += 1
+            elif s[j] in '}])':
+                hlbka -= 1
+                if hlbka == 0: break
+        else:
+            continue
+        vlastnosti = s[i:j + 1]
+        zvysok = s[j + 1:j + 4].strip()
+        maPopis = re.search(r"\b(text|html)\s*:", vlastnosti)
+        maDeti = zvysok.startswith(',')          # za vlastnostami nasleduju deti
+        if not maPopis and not maDeti:
+            chyby.append((s[:m.start()].count('\n') + 1,
+                          f"{m.group(1)} bez popisu — vykresli sa prazdny pruh"))
+    return chyby
+
+
 celkom = 0
 for f in sorted(pathlib.Path('js').rglob('*.js')) + [pathlib.Path('sw.js')]:
-    for r, popis in chybajuceExporty(f):
+    for r, popis in chybajuceExporty(f) + prazdneTlacidla(f):
         print(f'{f}:{r}  →  {popis}')
         celkom += 1
     naslo = analyzuj(f)

@@ -85,15 +85,19 @@ function accountCard(trainer) {
           : null,
       ),
       isCloud() && hasDevicePin()
-        ? el('button.btn.btn--soft.btn--block', {
-          'aria-label': 'Zamknúť',
-          onclick: () => {
-            lockApp();
-            toast('Zamknuté');
-            go('/');
-            refresh();
-          },
-        })
+        // popis patrí pod tlačidlo, nie doň — v tlačidle sa lámal na dva riadky
+        ? el('div', {},
+          el('button.btn.btn--soft.btn--block', {
+            onclick: () => {
+              lockApp();
+              toast('Zamknuté');
+              go('/');
+              refresh();
+            },
+          }, ikona('zamok', { velkost: 16 }), 'Zamknúť zariadenie'),
+          el('p.tiny.faint', { style: { margin: '6px 2px 0' },
+            text: 'Keď telefón alebo počítač preberá kolega. Appka sa zamkne a pri ďalšom otvorení si vypýta PIN.' }),
+        )
         : null,
       isCloud() && hasVault() ? el('div', {},
         field('Pýtať PIN pri otvorení', selectInput([
