@@ -17,17 +17,18 @@ import { renderSettings } from './views/settings.js';
 import { renderEvent } from './views/points.js';
 import { renderRebricek, resetStav as resetRebricek } from './views/rebricek.js';
 import { ikona } from './ikony.js';
+import { znak } from './znak.js';
 
 /* Ikony sú kreslené, nie emoji. Emoji vyzerali na každom telefóne inak,
    niesli si vlastné farby mimo palety a nedali sa zafarbiť — aktívna
    záložka tak nemohla sčervenieť. Kreslené ikony preberajú farbu textu. */
 const TABS = [
-  { path: 'trening', label: 'Tréning', icon: 'trening' },
-  { path: 'ziaci', label: 'Žiaci', icon: 'ziaci' },
-  { path: 'rebricek', label: 'Rebríček', icon: 'rebricek' },
-  { path: 'platby', label: 'Platby', icon: 'platby' },
-  { path: 'prehlady', label: 'Prehľady', icon: 'prehlady' },
-  { path: 'nastavenia', label: 'Viac', icon: 'viac' },
+  { path: 'trening', label: 'Tréning', icon: 'trening', akcent: 'trening' },
+  { path: 'ziaci', label: 'Žiaci', icon: 'ziaci', akcent: 'ziaci' },
+  { path: 'rebricek', label: 'Rebríček', icon: 'rebricek', akcent: 'rebricek' },
+  { path: 'platby', label: 'Platby', icon: 'platby', akcent: 'platby' },
+  { path: 'prehlady', label: 'Prehľady', icon: 'prehlady', akcent: 'prehlady' },
+  { path: 'nastavenia', label: 'Viac', icon: 'viac', akcent: 'viac' },
 ];
 
 const TITLES = {
@@ -72,7 +73,14 @@ function render() {
   const posun = obrazovka === poslednaObrazovka ? window.scrollY : 0;
   poslednaObrazovka = obrazovka;
 
-  const content = el('main.main');
+  /* Farba sekcie sa nastaví raz na celú obrazovku. Všetko vnútri —
+     nadpisy, aktívne pilulky, ozdoby — si ju potom vezme samo,
+     takže každá časť appky má vlastnú tvár bez toho, aby ju
+     každý pohľad musel riešiť. */
+  const sekcia = TABS.find((t) => t.path === (path === 'podujatie' ? 'rebricek' : path));
+  const content = el('main.main', {
+    style: { '--akcent': `var(--akcent-${sekcia?.akcent ?? 'trening'})` },
+  });
   mount(app, el('div.shell', {}, topbar(path, param, trainer), content, navbar(path)));
 
   /* Keby sa obrazovka nepodarila vykresliť, appka nesmie skončiť na bielej
@@ -163,6 +171,7 @@ function topbar(path, param, trainer) {
   const live = openSession();
   return el('header.topbar', {},
     param ? el('button.iconbtn', { text: '‹', 'aria-label': 'Späť', onclick: () => history.back() }) : null,
+    param ? null : znak('znak', { vyska: 30, class: 'topbar__znak', popis: shortName() }),
     el('div.grow', {},
       el('h1.topbar__title', { text: param ? TITLES[path] : shortName() }),
       el('div.topbar__sub', { text: param ? shortName() : TITLES[path] }),
@@ -216,6 +225,7 @@ function navbar(active) {
     TABS.map((t) =>
       el('button.nav__item', {
         'aria-current': t.path === active || (active === 'podujatie' && t.path === 'rebricek') ? 'page' : null,
+        style: { '--akcent': `var(--akcent-${t.akcent})` },
         onclick: () => go(`/${t.path}`),
       },
         el('span.nav__icon', {}, ikona(t.icon, { velkost: 22 })),

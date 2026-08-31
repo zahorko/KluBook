@@ -5,7 +5,7 @@
    ========================================================= */
 /* Pri každom nasadení novej verzie zvýšte číslo — prehliadač si tým
    vyžiada čerstvé súbory a starú cache zmaže. */
-const CACHE = 'klubook-v51';
+const CACHE = 'klubook-v52';
 
 const SHELL = [
   './',
@@ -22,6 +22,7 @@ const SHELL = [
   './js/router.js',
   './js/odznaky.js',
   './js/ikony.js',
+  './js/znak.js',
   './js/views/login.js',
   './js/views/training.js',
   './js/views/students.js',
@@ -31,6 +32,7 @@ const SHELL = [
   './js/views/points.js',
   './js/views/rebricek.js',
   './icons/icon.svg',
+  './icons/icon-maskable.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
 ];

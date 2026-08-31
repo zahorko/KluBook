@@ -14,7 +14,7 @@ export function el(spec, props = {}, ...children) {
     if (k === 'class') node.className = `${node.className} ${v}`.trim();
     else if (k === 'html') node.innerHTML = v;
     else if (k === 'text') node.textContent = v;
-    else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
+    else if (k === 'style' && typeof v === 'object') nastavStyl(node, v);
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
     else if (k === 'value') node.value = v;
     else if (k === 'checked' || k === 'disabled' || k === 'selected') node[k] = !!v;
@@ -22,6 +22,15 @@ export function el(spec, props = {}, ...children) {
   }
   append(node, children);
   return node;
+}
+
+/* Object.assign na style nevie zapísať vlastné CSS premenné (--nieco) —
+   tie musia ísť cez setProperty, inak sa ticho zahodia. */
+function nastavStyl(node, styl) {
+  for (const [k, v] of Object.entries(styl)) {
+    if (k.startsWith('--')) node.style.setProperty(k, v);
+    else node.style[k] = v;
+  }
 }
 
 function append(node, children) {

@@ -9,6 +9,7 @@
    ========================================================= */
 import { el, mount, toast, field } from '../ui.js';
 import { ikona } from '../ikony.js';
+import { znak } from '../znak.js';
 import { configProblem } from '../config.js';
 import {
   db, isCloud, demoLogin, signInWithPassword, unlockWithPin,
@@ -22,9 +23,11 @@ export function renderLogin(root) {
   wrap.append(inner);
   mount(root, wrap);
 
+  // celý zámok loga už názov klubu obsahuje — opakovať ho pod ním by bolo zbytočné,
+  // preto sa nadpis ukáže len tam, kde je iný než názov klubu (napr. meno trénera)
   const header = (title, sub) => el('div.center', {},
-    el('div.login__logo', {}, ikona('trening', { velkost: 40 })),
-    el('h1.login__title', { text: title }),
+    el('div.login__logo', {}, znak('logo', { sirka: 230, popis: '1. Šachový klub Košice' })),
+    title && title !== db.settings.clubName ? el('h1.login__title', { text: title }) : null,
     el('p.login__tag', { text: sub }),
   );
 

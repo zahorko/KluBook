@@ -19,6 +19,7 @@ import {
 } from '../store.js';
 import { odznakEl, hodnost, rozsahHodnosti, rozsahKratky, HODNOSTI } from '../odznaky.js';
 import { ikona, goldy } from '../ikony.js';
+import { znak } from '../znak.js';
 import { go, refresh } from '../router.js';
 import { eventsSection, seasonSheet } from './points.js';
 import { sklonuj } from './training.js';
@@ -62,8 +63,11 @@ function tabulkaTab() {
 
   return el('div.stack-lg', {},
     uiState.preDeti
-      ? el('div.center', {},
-        el('h2', { text: 'Rebríček sezóny', style: { fontSize: '22px', margin: '0 0 2px' } }),
+      // premieta sa deťom alebo leží na stole — nech je vidieť, že je to klub,
+      // nie tabuľka v mobile
+      ? el('div.center', { style: { marginBottom: '4px' } },
+        znak('znak', { vyska: 54, style: { color: 'var(--terracotta)' } }),
+        el('h2', { text: 'Rebríček sezóny', style: { fontSize: '22px', margin: '8px 0 2px' } }),
         el('div.small.muted', { text: `${fmtDate(from)} – ${fmtDate(to)}` }),
       )
       : sezonaKarta(from, to, cely),
