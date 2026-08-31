@@ -244,7 +244,7 @@ function pokladnaSekcia(obdobie) {
           el('span.chev', { text: '›' }),
         ),
       )),
-      el('p.tiny.faint', { style: { margin: '8px 2px 0' },
+      el('p.hint', {
         text: 'Peniaze sa pripisujú tomu, kto platbu v appke zapísal. Ťuknutím zapíšete odovzdanie do klubovej pokladne.' }),
     ),
   );

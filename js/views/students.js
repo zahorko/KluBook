@@ -993,7 +993,7 @@ export function studentSheet(student, defaultGroupId, predvyplnene = null) {
       field('Kontaktná osoba', contactName),
       el('div.grid2', {}, field('Telefón', phone), field('E-mail', email)),
       el('div.grid2', {}, field('Dátum nástupu', start), field('Cena tréningu (€)', fee)),
-      el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
+      el('p.hint', {
         text: `Prázdne = platí klubovú cenu ${db.settings.fee} € za tréning. Vyplňte, len ak má tento žiak inú.` }),
       field('Poznámka', note),
       el('button.btn.btn--block', {
@@ -1086,7 +1086,7 @@ function eventsSection(s) {
       ),
 
     mimoSezony
-      ? el('p.tiny.faint', { style: { margin: '8px 2px 0' },
+      ? el('p.hint', {
         text: `Mimo tejto sezóny má ešte ${mimoSezony} ${mimoSezony < 5 ? 'podujatia' : 'podujatí'}. Obdobie zmeníte v Prehľady → Rebríček.` })
       : null,
   );

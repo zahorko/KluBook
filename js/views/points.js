@@ -230,7 +230,7 @@ function eventSheet(zaznam) {
       field('Názov *', nazov),
       field('Druh', druh),
       el('div.grid2', {}, field('Dátum', datum), field('Miesto', miesto)),
-      el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
+      el('p.hint', {
         text: 'Ligové kolo = jedna partia. Turnaj = viac partií za deň, dá sa zapísať aj umiestnenie.' }),
       el('button.btn.btn--block', {
         text: novy ? 'Vytvoriť' : 'Uložiť',

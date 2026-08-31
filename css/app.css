@@ -172,6 +172,22 @@ a { color: var(--terracotta); }
 .faint { color: var(--ink-faint); }
 .small { font-size: 13px; }
 .tiny  { font-size: 11.5px; }
+
+/* Vysvetlivka pod poľom alebo tlačidlom.
+   Patrí k tomu, čo je nad ňou — preto je pri tom blízko. A práve preto
+   musí byť za ňou väčšia medzera: bez nej sa vysvetlivka zlepí s ďalším
+   popiskom a z celej karty je jedna nečitateľná stena textu. */
+.hint {
+  margin: 7px 2px 0;
+  font-size: 12px; line-height: 1.5;
+  color: var(--ink-faint);
+}
+.stack > .hint, .card > .hint { margin-top: 7px; }
+.stack > .hint + *, .card > .hint + * { margin-top: 20px; }
+/* To isté, keď vysvetlivka končí obal — medzeru vtedy určuje až ten obal.
+   Bez tohto spadne na 12 px a text sa zlepí s ďalším tlačidlom.
+   Prehliadač bez :has() to iba nechá tesnejšie, nič sa nerozbije. */
+.stack > *:has(> .hint:last-child) + * { margin-top: 20px; }
 .center { text-align: center; }
 .mono { font-variant-numeric: tabular-nums; }
 

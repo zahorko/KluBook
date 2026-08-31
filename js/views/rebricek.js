@@ -101,7 +101,7 @@ function hodnostiKarta(hraci) {
         el('div.hodnost__meno', { text: h.nazov }),
         el('div.hodnost__rozsah', { text: rozsahKratky(h) }),
       ))),
-      uiState.preDeti ? null : el('p.tiny.faint', { style: { margin: '10px 2px 0' },
+      uiState.preDeti ? null : el('p.hint', {
         text: 'Podfarbené sú hodnosti, ktoré už niekto v klube má. Hodnosť sa mení sama '
           + 'podľa levelu — pri jednom až dvoch tréningoch týždenne postúpi dieťa '
           + 'približne raz za pár mesiacov.' }),
@@ -194,7 +194,7 @@ function plnaTabulka(hraci) {
   return el('div', {},
     el('h2.section-title', { text: uiState.zoradenie === 'celkovo' ? 'Celé poradie za klub' : 'Celé poradie tejto sezóny' }),
     el('div.card.card--flush.list', {}, hraci.map((r) => riadok(r))),
-    el('p.tiny.faint', { style: { margin: '8px 2px 0' },
+    el('p.hint', {
       text: 'Toto vidíte len vy. Deťom ukazujte režim vyššie — ten ukáže podium a nič viac, '
         + 'celé poradie nikoho nemotivuje odspodu. Svoj level a koľko mu chýba na ďalší '
         + 'nájde každý na svojej karte v Žiakoch.' }),

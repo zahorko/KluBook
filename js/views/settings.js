@@ -95,7 +95,7 @@ function accountCard(trainer) {
               refresh();
             },
           }, ikona('zamok', { velkost: 16 }), 'Zamknúť zariadenie'),
-          el('p.tiny.faint', { style: { margin: '6px 2px 0' },
+          el('p.hint', {
             text: 'Keď telefón alebo počítač preberá kolega. Appka sa zamkne a pri ďalšom otvorení si vypýta PIN.' }),
         )
         : null,
@@ -113,7 +113,7 @@ function accountCard(trainer) {
               : 'Uložené');
           },
         })),
-        el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
+        el('p.hint', {
           text: 'Platí len pre toto zariadenie. Pri „Nikdy" sa appka otvorí rovno — kto vezme odomknutý '
             + 'telefón do ruky, uvidí mená detí, kontakty aj platby. Na klubovom počítači to nechajte na 12 hodinách.' }),
       ) : null,
@@ -403,7 +403,7 @@ function trainersCard() {
           onclick: () => novyTrenerSheet(),
         })
         : null,
-      el('p.tiny.faint', { style: { margin: '10px 2px 0' },
+      el('p.hint', {
         text: jeSpravca()
           ? 'Účet vznikne rovno tu. Heslo odovzdajte trénerovi osobne — pri prvom prihlásení si ho môže zmeniť.'
           : 'Nových trénerov zakladá správca klubu.' }),
@@ -557,7 +557,7 @@ function scheduleSheet(zaznam) {
       field('Skupina', skupina),
       el('div.grid2', {}, field('Od', od), field('Do', doo)),
       field('Zvyčajne vedie', trener),
-      el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
+      el('p.hint', {
         text: 'Rozvrh tréningy sám nevytvára — len ich ponúka a upozorní, keď niektorý chýba.' }),
       el('button.btn.btn--block', {
         text: novy ? 'Pridať' : 'Uložiť',
@@ -635,7 +635,7 @@ function gamifikaciaCard() {
         el('div.field__label', { text: 'Ako to vyjde' }),
         el('div.card.stack', { style: { background: 'var(--cream-deep)', borderColor: 'transparent', gap: '4px' } },
           ...ukazka,
-          el('p.tiny.faint', { style: { margin: '6px 0 0' },
+          el('p.hint', {
             text: `Kto chodí dvakrát do týždňa a nikam nejde hrať, nazbiera ${tyzdnovXP} XP týždenne`
               + `${g.seriaDlzka ? ` a každých ${g.seriaDlzka} tréningov po sebe mu pridá ${g.seriaBonus} XP navyše` : ''}.` }),
         ),
@@ -707,7 +707,7 @@ function clubCard() {
         type: 'number', step: '0.5', value: db.settings.fee,
         onchange: (e) => { updateSettings({ fee: Number(e.target.value) || 0 }); toast('Uložené'); },
       })),
-      el('p.tiny.faint', { style: { margin: '-6px 2px 0' },
+      el('p.hint', {
         text: 'Platí sa za odtrénovanú hodinu. Konkrétnemu žiakovi sa dá nastaviť iná cena v jeho karte.' }),
       field('Evidencia platieb od', el('input.input', {
         type: 'month',
@@ -718,7 +718,7 @@ function clubCard() {
           refresh();
         },
       })),
-      el('p.tiny.faint', { style: { margin: '-6px 2px 0' },
+      el('p.hint', {
         text: 'Prehľady nezobrazujú mesiace spred tohto dátumu. Nastavte napríklad začiatok sezóny.' }),
     ),
   );
@@ -781,7 +781,7 @@ function novyTrenerSheet() {
       field('Meno *', meno),
       field('E-mail *', email),
       field('Heslo', heslo),
-      el('p.tiny.faint', { style: { margin: '-4px 2px 0' }, text: 'Aspoň 8 znakov. Pokojne nechajte navrhnuté.' }),
+      el('p.hint', { text: 'Aspoň 8 znakov. Pokojne nechajte navrhnuté.' }),
       stav,
       uloz,
     );

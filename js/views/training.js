@@ -274,7 +274,7 @@ function endSessionSheet(session, hotovo) {
         text: 'Dochádzku žiakov aj tému môžete upraviť aj neskôr.' }),
       field('Čas ukončenia', cas),
       field('Téma tréningu (nepovinné)', tema.node),
-      el('p.tiny.faint', { style: { margin: '-4px 2px 0' },
+      el('p.hint', {
         text: 'O mesiac sa vám bude hodiť vedieť, čo ste s touto skupinou preberali.' }),
       el('div.row', { style: { gap: '10px', marginTop: '14px' } },
         el('button.btn.btn--ghost.grow', { text: 'Zrušiť', onclick: close }),
@@ -571,7 +571,7 @@ export function renderSession(root, trainer, sessionId) {
 
     el('div', {},
       el('h2.section-title', { text: 'Dochádzka žiakov' }),
-      el('p.tiny.faint', { style: { margin: '-4px 2px 10px' },
+      el('p.hint', { style: { marginBottom: '10px' },
         text: session.endTime
           ? 'Zoznam ukazuje, kto bol na tomto tréningu zapísaný. Ťuknutím na meno prepnete prítomný / neprítomný.'
           : 'Ťuknutím na meno prepnete prítomný / neprítomný. Tlačidlom vpravo zapíšete, že za tento tréning zaplatil.' }),
