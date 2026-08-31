@@ -18,6 +18,7 @@ import {
   eventsInRange, xpNaDalsiLevel,
 } from '../store.js';
 import { odznakEl, hodnost, rozsahHodnosti, rozsahKratky, HODNOSTI } from '../odznaky.js';
+import { ikona, goldy } from '../ikony.js';
 import { go, refresh } from '../router.js';
 import { eventsSection, seasonSheet } from './points.js';
 import { sklonuj } from './training.js';
@@ -31,12 +32,12 @@ export const resetStav = () => Object.assign(uiState, VYCHODZI_STAV);
 
 export function renderRebricek(root) {
   const tabs = el('div.pillbar', {},
-    [['tabulka', '🏆 Rebríček'], ['podujatia', '📅 Podujatia'], ['obchod', '💰 Obchod']].map(([id, label]) =>
-      el('button.pill', {
-        text: label,
-        'aria-pressed': String(uiState.tab === id),
-        onclick: () => { uiState.tab = id; refresh(); },
-      }),
+    [['tabulka', 'rebricek', 'Rebríček'], ['podujatia', 'kalendar', 'Podujatia'], ['obchod', 'gold', 'Obchod']]
+      .map(([id, ic, label]) =>
+        el('button.pill', {
+          'aria-pressed': String(uiState.tab === id),
+          onclick: () => { uiState.tab = id; refresh(); },
+        }, ikona(ic, { velkost: 16 }), label),
     ),
   );
 
@@ -70,7 +71,7 @@ function tabulkaTab() {
     filtre(),
     hraci.length === 0
       ? el('div.empty', {},
-        el('span.empty__mark', { text: '🏆' }),
+        el('span.empty__mark', {}, ikona('rebricek', { velkost: 34 })),
         'Zatiaľ nikto nemá XP. Pribudnú po prvom tréningu alebo podujatí.')
       // Podium ukazujeme len deťom — trénerovi by len zopakovalo prvé tri
       // riadky tabuľky, ktoré aj tak majú medaily.
@@ -128,10 +129,10 @@ function sezonaKarta(from, to, cely) {
 function rezimPrepinac() {
   return el('div.row', { style: { gap: '8px' } },
     el('button.btn.btn--ghost.btn--sm.grow', {
-      text: uiState.preDeti ? '👁 Režim pre deti — zapnutý' : '👁 Ukázať deťom',
       style: uiState.preDeti ? { background: 'var(--terracotta-l)', color: 'var(--terracotta-d)', borderColor: 'transparent' } : {},
       onclick: () => { uiState.preDeti = !uiState.preDeti; refresh(); },
-    }),
+    }, ikona('oko', { velkost: 17 }),
+      uiState.preDeti ? 'Režim pre deti — zapnutý' : 'Ukázať deťom'),
     uiState.preDeti ? null : el('button.btn.btn--ghost.btn--sm', { text: '⤓ CSV', onclick: () => exportRebricek() }),
   );
 }
@@ -154,7 +155,8 @@ function filtre() {
   );
 }
 
-const MEDAILY = ['🥇', '🥈', '🥉'];
+/** Medaila hovorí o poradí, odznak o hodnosti — sú to dve rôzne veci. */
+const medaila = (miesto, velkost) => ikona(`medaila${miesto}`, { velkost });
 
 function podium(top) {
   if (!top.length) return null;
@@ -167,11 +169,11 @@ function podium(top) {
         },
         onclick: () => go(`/ziaci/${r.student.id}`),
       },
-        el('span', { style: { fontSize: '26px' }, text: MEDAILY[i] }),
+        medaila(i + 1, 30),
         odznakEl(r.level, { velkost: 42, class: 'odznak--velky' }),
         el('span.grow', {},
           el('div', { style: { fontWeight: '600', fontSize: '16px' }, text: r.student.name }),
-          el('div.item__sub.item__sub--riadok', { text: `${hodnost(r.level).nazov} ${r.level} · ${r.gold} 💰` }),
+          el('div.item__sub.item__sub--riadok', {}, `${hodnost(r.level).nazov} ${r.level} · `, goldy(r.gold, { velkost: 13 })),
         ),
         el('span', { style: { textAlign: 'right' } },
           el('div.mono', { style: { fontWeight: '700', fontSize: '18px' },
@@ -218,8 +220,8 @@ function riadok(r) {
         fontSize: r.poradie <= 3 ? '18px' : '14px',
         color: r.poradie <= 3 ? 'inherit' : 'var(--ink-faint)',
       },
-      text: r.poradie <= 3 ? MEDAILY[r.poradie - 1] : `${r.poradie}.`,
-    }),
+      text: r.poradie <= 3 ? '' : `${r.poradie}.`,
+    }, r.poradie <= 3 ? medaila(r.poradie, 22) : null),
     odznakEl(r.level, { velkost: 30 }),
     el('span.grow', {},
       el('div.item__title', {}, r.student.name,
@@ -234,7 +236,7 @@ function riadok(r) {
     ),
     el('span', { style: { textAlign: 'right' } },
       el('div.mono', { style: { fontWeight: '700', fontSize: '17px' }, text: String(xp) }),
-      el('div.item__sub', { text: `XP · ${r.gold} 💰` }),
+      el('div.item__sub.row', { style: { gap: '5px', justifyContent: 'flex-end' } }, 'XP · ', goldy(r.gold, { velkost: 13 })),
     ),
   );
 }
@@ -264,7 +266,8 @@ function obchodTab() {
         el('div.item', {},
           el('span.grow', {},
             el('div.item__title', { text: n.student.name }),
-            el('div.item__sub', { text: `${n.itemName} · ${n.price} 💰 · ${fmtDayShort(String(n.at).slice(0, 10))}` }),
+            el('div.item__sub.row', { style: { gap: '5px' } }, `${n.itemName} · `, goldy(n.price, { velkost: 13 }),
+              ` · ${fmtDayShort(String(n.at).slice(0, 10))}`),
           ),
           el('button.btn.btn--sm', {
             text: '✓ Odovzdané',
@@ -279,30 +282,31 @@ function obchodTab() {
       ponuka.length === 0
         ? el('div.stack', {},
           el('div.empty', {},
-            el('span.empty__mark', { text: '💰' }),
+            el('span.empty__mark', {}, ikona('gold', { velkost: 34 })),
             'Ponuka je zatiaľ prázdna. Kým nie je čo kúpiť, goldy nikoho neťahajú.'),
           el('button.btn.btn--soft.btn--block', {
-            text: '✨ Naplniť odporúčanou ponukou',
             onclick: () => {
               for (const i of ODPORUCANA_PONUKA) upsertShopItem(i);
               toast(`Pridaných ${ODPORUCANA_PONUKA.length} odmien — ceny si pokojne prepíšte`);
               refresh();
             },
-          }),
+          }, ikona('iskra', { velkost: 17 }), 'Naplniť odporúčanou ponukou'),
           el('p.tiny.faint', { style: { margin: 0 },
             text: 'Lacné sladké a slané na začiatok, výsady v strede, veľké ceny na konci sezóny. Všetko sa dá upraviť aj zmazať.' }),
         )
         : el('div.card.card--flush.list', {}, ponuka.map((i) =>
           el('button.item', { onclick: () => kupitSheet(i) },
-            el('span', { style: { fontSize: '20px', minWidth: '28px', textAlign: 'center' },
-              text: i.kind === 'vyhoda' ? '⭐' : '🎁' }),
+            el('span', {
+              // ikona je druhoradá, hlavný je názov odmeny — nech ho neprekrikuje
+              style: { minWidth: '28px', display: 'grid', placeItems: 'center', color: 'var(--terracotta)' },
+            }, ikona(i.kind === 'vyhoda' ? 'vysada' : 'darcek', { velkost: 21 })),
             el('span.grow', {},
               el('div.item__title', {}, i.name,
                 i.active === false ? el('span.tag', { text: 'skryté', style: { marginLeft: '8px' } }) : null),
               el('div.item__sub', { text: i.description || (i.kind === 'vyhoda' ? 'klubová výsada' : 'vecná odmena') }),
             ),
             el('span', { style: { textAlign: 'right' } },
-              el('div.mono', { style: { fontWeight: '700' }, text: `${i.price} 💰` }),
+              el('div.mono', { style: { fontWeight: '700' } }, goldy(i.price)),
             ),
             el('span.chev', { text: '›' }),
           ),
@@ -324,7 +328,7 @@ function kupitSheet(item) {
         try {
           kupit(r.student.id, item.id);
           close();
-          toast(`${r.student.name}: ${item.name} za ${item.price} 💰`);
+          toast(`${r.student.name}: ${item.name} za ${item.price} goldov`);
           refresh();
         } catch (e) { toast(e.message); }
       } : undefined,
@@ -332,7 +336,7 @@ function kupitSheet(item) {
       odznakEl(r.level, { velkost: 30 }),
       el('span.grow', {},
         el('div.item__title', { text: r.student.name }),
-        el('div.item__sub.item__sub--riadok', { text: `${hodnost(r.level).nazov} ${r.level} · zostatok ${r.gold} 💰` }),
+        el('div.item__sub.item__sub--riadok', {}, `${hodnost(r.level).nazov} ${r.level} · zostatok `, goldy(r.gold, { velkost: 13 })),
       ),
       dostupne ? el('span.chev', { text: '›' }) : el('span.tiny.faint', { text: `chýba ${item.price - r.gold}` }),
     );
@@ -340,7 +344,7 @@ function kupitSheet(item) {
     mount(body,
       el('div.row.row--between', {},
         el('span.small.muted', { text: item.description || (item.kind === 'vyhoda' ? 'Klubová výsada' : 'Vecná odmena') }),
-        el('span.mono', { style: { fontWeight: '700' }, text: `${item.price} 💰` }),
+        el('span.mono', { style: { fontWeight: '700' } }, goldy(item.price)),
       ),
       el('div.row', { style: { gap: '8px' } },
         el('button.btn.btn--ghost.btn--sm.grow', { text: 'Upraviť odmenu', onclick: () => { close(); itemSheet(item); } }),
@@ -378,7 +382,7 @@ function itemSheet(item) {
     const popis = textInput({ value: item?.description ?? '', placeholder: 'krátky popis (nepovinné)' });
     const cena = el('input.input', { type: 'number', min: '0', step: '1', value: String(item?.price ?? 20) });
     const druh = selectInput(
-      [{ value: 'vec', label: '🎁 Vecná odmena' }, { value: 'vyhoda', label: '⭐ Klubová výsada (nič nestojí)' }],
+      [{ value: 'vec', label: 'Vecná odmena' }, { value: 'vyhoda', label: 'Klubová výsada (nič nestojí)' }],
       { value: item?.kind ?? 'vec' },
     );
     const viditelne = el('input', {

@@ -16,16 +16,18 @@ import { renderReports, resetStav as resetPrehlady } from './views/reports.js';
 import { renderSettings } from './views/settings.js';
 import { renderEvent } from './views/points.js';
 import { renderRebricek, resetStav as resetRebricek } from './views/rebricek.js';
+import { ikona } from './ikony.js';
 
-/* Ikony sú zámerne všetky emoji. Keď bol medzi nimi textový znak „€",
-   vykreslil sa iným písmom a v lište opticky vytŕčal. */
+/* Ikony sú kreslené, nie emoji. Emoji vyzerali na každom telefóne inak,
+   niesli si vlastné farby mimo palety a nedali sa zafarbiť — aktívna
+   záložka tak nemohla sčervenieť. Kreslené ikony preberajú farbu textu. */
 const TABS = [
-  { path: 'trening', label: 'Tréning', icon: '♟️' },
-  { path: 'ziaci', label: 'Žiaci', icon: '👥' },
-  { path: 'rebricek', label: 'Rebríček', icon: '🏆' },
-  { path: 'platby', label: 'Platby', icon: '💶' },
-  { path: 'prehlady', label: 'Prehľady', icon: '📊' },
-  { path: 'nastavenia', label: 'Viac', icon: '⚙️' },
+  { path: 'trening', label: 'Tréning', icon: 'trening' },
+  { path: 'ziaci', label: 'Žiaci', icon: 'ziaci' },
+  { path: 'rebricek', label: 'Rebríček', icon: 'rebricek' },
+  { path: 'platby', label: 'Platby', icon: 'platby' },
+  { path: 'prehlady', label: 'Prehľady', icon: 'prehlady' },
+  { path: 'nastavenia', label: 'Viac', icon: 'viac' },
 ];
 
 const TITLES = {
@@ -142,7 +144,7 @@ function chybovaKarta(e) {
 function renderUnlinked(trainer) {
   mount(app, el('div.login', {}, el('div.login__inner.stack', {},
     el('div.center', {},
-      el('div.login__logo', { text: '♟' }),
+      el('div.login__logo', {}, ikona('trening', { velkost: 40 })),
       el('h1.login__title', { text: 'Účet ešte nie je aktivovaný' }),
     ),
     el('div.card.stack', {},
@@ -216,7 +218,7 @@ function navbar(active) {
         'aria-current': t.path === active || (active === 'podujatie' && t.path === 'rebricek') ? 'page' : null,
         onclick: () => go(`/${t.path}`),
       },
-        el('span.nav__icon', { text: t.icon }),
+        el('span.nav__icon', {}, ikona(t.icon, { velkost: 22 })),
         el('span', { text: t.label }),
       ),
     ),

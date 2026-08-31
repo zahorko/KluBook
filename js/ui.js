@@ -1,6 +1,7 @@
 /* =========================================================
    ui.js — malé UI pomôcky (bez frameworku)
    ========================================================= */
+import { ikona } from './ikony.js';
 
 /** el('div.card', { onclick }, ...children) */
 export function el(spec, props = {}, ...children) {
@@ -101,9 +102,12 @@ export const shiftPeriod = (period, delta) => {
 
 /* ---------- toast ---------- */
 let toastTimer = null;
-export function toast(message, { oslava = false } = {}) {
+export function toast(message, { oslava = false, ikona: menoIkony = null } = {}) {
   const node = document.getElementById('toast');
   node.textContent = message;
+  // oslava má vždy ikonu — bez nej je postup na vyšší level len ďalšia hláška
+  const ktora = menoIkony ?? (oslava ? 'oslava' : null);
+  if (ktora) node.prepend(ikona(ktora, { velkost: 18 }));
   node.classList.toggle('toast--oslava', oslava);
   node.classList.add('toast--on');
   clearTimeout(toastTimer);

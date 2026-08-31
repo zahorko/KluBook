@@ -144,7 +144,7 @@ function hracRiadok(event, v, paint) {
     const po = stavHraca(v.studentId);
     paint();
     if (po.level > pred.level) {
-      toast(`🎉 ${v.student.name} má level ${po.level} · +${gamifikacia().goldZaLevel} 💰`, { oslava: true });
+      toast(`${v.student.name} má level ${po.level} · +${gamifikacia().goldZaLevel} goldov`, { oslava: true });
     }
   };
 

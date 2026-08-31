@@ -8,6 +8,7 @@
    DEMO:  výber trénera + PIN 1234.
    ========================================================= */
 import { el, mount, toast, field } from '../ui.js';
+import { ikona } from '../ikony.js';
 import { configProblem } from '../config.js';
 import {
   db, isCloud, demoLogin, signInWithPassword, unlockWithPin,
@@ -22,7 +23,7 @@ export function renderLogin(root) {
   mount(root, wrap);
 
   const header = (title, sub) => el('div.center', {},
-    el('div.login__logo', { text: '♟' }),
+    el('div.login__logo', {}, ikona('trening', { velkost: 40 })),
     el('h1.login__title', { text: title }),
     el('p.login__tag', { text: sub }),
   );
@@ -34,7 +35,8 @@ export function renderLogin(root) {
     return el('div.card', {
       style: { background: 'var(--red-l)', borderColor: 'transparent', marginBottom: '14px' },
     },
-      el('div', { style: { fontWeight: '600', marginBottom: '4px' }, text: '⚠ Chyba v nastavení' }),
+      el('div.row', { style: { gap: '6px', fontWeight: '600', marginBottom: '4px' } },
+        ikona('pozor', { velkost: 15 }), 'Chyba v nastavení'),
       el('div.small', { text: problem }),
     );
   };

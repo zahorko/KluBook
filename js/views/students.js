@@ -17,6 +17,7 @@ import {
   hracskyProfil, gamifikacia, shopItems, kupit, purchasesOfStudent, zrusitNakup,
 } from '../store.js';
 import { odznakEl, hodnost, dalsiaHodnost } from '../odznaky.js';
+import { ikona, goldy } from '../ikony.js';
 import { go, refresh } from '../router.js';
 import {
   contactSheet, telHref, maKontakt, textVymeskavanie,
@@ -77,7 +78,8 @@ export function renderStudents(root) {
 
     mount(listBox,
       students.length === 0
-        ? el('div.empty', {}, el('span.empty__mark', { text: '♟' }), 'Žiadni žiaci. Pridajte prvého tlačidlom nižšie.')
+        ? el('div.empty', {}, el('span.empty__mark', {}, ikona('trening', { velkost: 34 })),
+          'Žiadni žiaci. Pridajte prvého tlačidlom nižšie.')
         : el('div.stack', {},
           aktivni.length ? el('div.card.card--flush.list', {}, aktivni.map(riadok)) : null,
           archivovani.length
@@ -122,16 +124,14 @@ export function renderStudents(root) {
         onclick: () => studentSheet(null, uiState.groupId),
       }),
       el('button.btn.btn--soft', {
-        text: '✉️ Rodičom',
         title: 'Napísať naraz rodičom celej skupiny',
         onclick: () => hromadnaSpravaSheet(),
-      }),
+      }, ikona('mail', { velkost: 16 }), 'Rodičom'),
     ),
     // úplný zoznam s kontaktmi žije v Prehľadoch, ale hľadá sa prirodzene tu
     el('button.btn.btn--ghost.btn--block', {
-      text: '📋 Kompletný zoznam s kontaktmi',
       onclick: () => go('/prehlady/zoznam'),
-    }),
+    }, ikona('dokument', { velkost: 16 }), 'Kompletný zoznam s kontaktmi'),
   ));
 }
 
@@ -209,26 +209,23 @@ function hromadnaSpravaSheet() {
       field('Text správy', sprava),
 
       el('button.btn.btn--block', {
-        text: '✉️ Otvoriť e-mail všetkým',
         onclick: () => {
           const emaily = prijemcovia().sEmailom.map((x) => x.contactEmail.trim());
           if (!emaily.length) { toast('Nikto v tomto výbere nemá e-mail'); return; }
           close();
           window.location.href = mailtoHromadne(emaily, predmet.value, sprava.value);
         },
-      }),
+      }, ikona('mail', { velkost: 16 }), 'Otvoriť e-mail všetkým'),
       el('button.btn.btn--soft.btn--block', {
-        text: '📋 Skopírovať telefónne čísla',
         onclick: () => {
           const cisla = prijemcovia().sTelefonom.map((x) => cistecislo(x.contactPhone));
           if (!cisla.length) { toast('Nikto v tomto výbere nemá telefón'); return; }
           skopirovat(cisla.join(', '), `Skopírovaných ${cisla.length} čísel — vložte ich do SMS alebo WhatsAppu`);
         },
-      }),
+      }, ikona('telefon', { velkost: 16 }), 'Skopírovať telefónne čísla'),
       el('button.btn.btn--ghost.btn--block', {
-        text: '📋 Skopírovať text správy',
         onclick: () => skopirovat(sprava.value, 'Text skopírovaný'),
-      }),
+      }, ikona('dokument', { velkost: 16 }), 'Skopírovať text správy'),
       el('p.tiny.faint', { style: { margin: 0 },
         text: 'E-mail sa otvorí s adresami v skrytej kópii, takže rodičia nevidia kontakty jeden na druhého. '
           + 'Nič sa neodošle samo — odoslanie potvrdíte vy.' }),
@@ -267,8 +264,7 @@ function gamifikaciaSekcia(s) {
           el('div.mono', {
             // mínus môže vzniknúť len po znížení pravidiel — nech to nezapadne
             style: { fontSize: '22px', fontWeight: '700', color: p.gold < 0 ? 'var(--red)' : 'inherit' },
-            text: `${p.gold} 💰`,
-          }),
+          }, goldy(p.gold, { velkost: 19 })),
           el('div.item__sub', { text: p.gold < 0 ? 'v mínuse' : 'na účte' }),
         ),
       ),
@@ -311,12 +307,16 @@ function gamifikaciaSekcia(s) {
         },
       },
         el('span.grow', {},
-          el('div', {
-            style: { fontWeight: '600', color: p.sezona.seria ? 'var(--terracotta-d)' : 'var(--ink-soft)' },
-            text: p.sezona.seria
-              ? `🔥 ${p.sezona.seria} ${sklonuj(p.sezona.seria, 'tréning', 'tréningy', 'tréningov')} po sebe`
-              : 'Séria zatiaľ nebeží',
-          }),
+          el('div.row', {
+            style: {
+              gap: '6px', fontWeight: '600',
+              color: p.sezona.seria ? 'var(--terracotta-d)' : 'var(--ink-soft)',
+            },
+          },
+            p.sezona.seria ? ikona('seria', { velkost: 17 }) : null,
+            p.sezona.seria
+              ? `${p.sezona.seria} ${sklonuj(p.sezona.seria, 'tréning', 'tréningy', 'tréningov')} po sebe`
+              : 'Séria zatiaľ nebeží'),
           el('div.tiny.faint', {
             text: p.sezona.seria
               ? `Do ${g.seriaDlzka}. chýba ${(g.seriaDlzka - (p.sezona.seria % g.seriaDlzka)) % g.seriaDlzka || g.seriaDlzka}`
@@ -327,9 +327,8 @@ function gamifikaciaSekcia(s) {
         p.sezona.serie ? el('span.tag', { text: `${p.sezona.serie}× séria` }) : null,
       ),
       el('button.btn.btn--block', {
-        text: '💰 Vybrať odmenu z obchodu',
         onclick: () => obchodSheet(s, p),
-      }),
+      }, ikona('gold', { velkost: 17 }), 'Vybrať odmenu z obchodu'),
     ),
     nakupySekcia(s),
   );
@@ -344,7 +343,7 @@ function nakupySekcia(s) {
       el('div.item', {},
         el('span.grow', {},
           el('div.item__title', { text: n.itemName }),
-          el('div.item__sub', { text: `${fmtDate(String(n.at).slice(0, 10))} · ${n.price} 💰`
+          el('div.item__sub', { text: `${fmtDate(String(n.at).slice(0, 10))} · ${n.price} goldov`
             + (n.delivered ? ' · odovzdané' : ' · čaká na odovzdanie') }),
         ),
         el('button.iconbtn', {
@@ -371,7 +370,7 @@ function obchodSheet(s, profil) {
     mount(body,
       el('div.row.row--between', {},
         el('span.small.muted', { text: 'Zostatok na účte' }),
-        el('span.mono', { style: { fontWeight: '700', fontSize: '17px' }, text: `${profil.gold} 💰` }),
+        el('span.mono', { style: { fontWeight: '700', fontSize: '17px' } }, goldy(profil.gold, { velkost: 17 })),
       ),
       ponuka.length === 0
         ? el('div.empty', { text: 'Ponuka je zatiaľ prázdna. Odmeny pridáte v Rebríčku → Obchod.' })
@@ -383,18 +382,19 @@ function obchodSheet(s, profil) {
               try {
                 kupit(s.id, i.id);
                 close();
-                toast(`${i.name} za ${i.price} 💰`);
+                toast(`${i.name} za ${i.price} goldov`);
                 refresh();
               } catch (e) { toast(e.message); }
             } : undefined,
           },
-            el('span', { style: { fontSize: '18px', minWidth: '26px', textAlign: 'center' },
-              text: i.kind === 'vyhoda' ? '⭐' : '🎁' }),
+            el('span', {
+              style: { minWidth: '26px', display: 'grid', placeItems: 'center', color: 'var(--terracotta)' },
+            }, ikona(i.kind === 'vyhoda' ? 'vysada' : 'darcek', { velkost: 20 })),
             el('span.grow', {},
               el('div.item__title', { text: i.name }),
               el('div.item__sub', { text: i.description || '' }),
             ),
-            el('span.mono', { style: { fontWeight: '700' }, text: `${i.price} 💰` }),
+            el('span.mono', { style: { fontWeight: '700' } }, goldy(i.price)),
           );
         })),
     );
@@ -576,7 +576,8 @@ function eloSekcia(s) {
     : el('div.card.stack', {},
       el('p.small.muted', { style: { margin: 0 },
         text: 'Keď žiaka prepojíte s matrikou zväzu, appka mu bude sama sťahovať ELO a ukáže, ako sa mení.' }),
-      el('button.btn.btn--block', { text: '🔗 Prepojiť so zväzom', onclick: () => zvazSheet(s) }),
+      el('button.btn.btn--block', { onclick: () => zvazSheet(s) },
+        ikona('odkaz', { velkost: 17 }), 'Prepojiť so zväzom'),
     );
 
   return el('div', {}, el('h2.section-title', { text: 'ELO' }), obsah);
@@ -724,15 +725,15 @@ export function renderStudentDetail(root, studentId) {
       maKontakt(s)
         ? el('div.row', { style: { gap: '10px', marginTop: '14px' } },
           s.contactPhone
-            ? el('a.btn.btn--sm.grow', { href: telHref(s.contactPhone), style: { textDecoration: 'none' } }, '📞 Zavolať')
+            ? el('a.btn.btn--sm.grow', { href: telHref(s.contactPhone), style: { textDecoration: 'none' } },
+              ikona('telefon', { velkost: 15 }), 'Zavolať')
             : null,
           el('button.btn.btn--soft.btn--sm.grow', {
-            text: '💬 Napísať',
             onclick: () => contactSheet(s, {
               title: `Napísať — ${s.contactName || s.name}`,
               text: textVymeskavanie(s, db.settings.shortName || db.settings.clubName, currentTrainer()?.name ?? ''),
             }),
-          }),
+          }, ikona('sprava', { velkost: 15 }), 'Napísať'),
         )
         : null,
       el('div.row', { style: { gap: '10px', marginTop: '14px' } },
@@ -809,7 +810,8 @@ export function renderStudentDetail(root, studentId) {
                 el('div.item__sub', {
                   text: `${x.startTime}–${x.endTime ?? '…'}${x.endTime ? ` · ${fmtHours(durationMinutes(x))}` : ''}`,
                 }),
-                x.note ? el('div.item__sub', { style: { color: 'var(--ink-soft)' }, text: `📘 ${x.note}` }) : null,
+                x.note ? el('div.item__sub.row', { style: { gap: '5px', color: 'var(--ink-soft)' } },
+                  ikona('kniha', { velkost: 13 }), x.note) : null,
               ),
               el('span', { class: `tag tag--${present ? 'paid' : 'unpaid'}`, text: present ? 'bol' : 'chýbal' }),
             );
@@ -820,7 +822,7 @@ export function renderStudentDetail(root, studentId) {
     // Anonymizácia je to, čo väčšinou naozaj chcete: osobné údaje preč,
     // ale odtrénované hodiny a vybraté peniaze ostanú vo vyúčtovaní klubu.
     s.anonymized ? null : el('button.btn.btn--ghost.btn--block', {
-      text: '🕶 Zabudnúť osobné údaje',
+      text: 'Zabudnúť osobné údaje',
       onclick: async () => {
         const ok = await confirmSheet('Zabudnúť osobné údaje?',
           `${s.name} príde o meno, kontakt aj poznámky a stane sa z neho anonymný záznam. `
@@ -962,7 +964,7 @@ export function studentSheet(student, defaultGroupId, predvyplnene = null) {
       // aj ELO prídu odtiaľ. Pre začiatočníkov, ktorí registrovaní nie sú,
       // ostáva všetko po starom.
       isNew ? el('button.btn.btn--soft.btn--block', {
-        text: zoZvazu.hrac ? '🔗 Vybrať iného zo zväzu' : '🔗 Načítať zo zväzu',
+        text: zoZvazu.hrac ? 'Vybrať iného zo zväzu' : 'Načítať zo zväzu',
         onclick: () => {
           const rozpisane = {
             name: name.value, contactName: contactName.value, contactPhone: phone.value,

@@ -18,6 +18,7 @@ import {
   todaysSchedule, missingSessions, markScheduleSkipped, DNI,
 } from '../store.js';
 import { hodnost } from '../odznaky.js';
+import { ikona } from '../ikony.js';
 import { go, refresh } from '../router.js';
 import { contactSheet, telHref, maKontakt, textVymeskavanie } from '../contact.js';
 
@@ -174,16 +175,16 @@ function droppingCard(list) {
                 href: telHref(student.contactPhone),
                 title: `Zavolať: ${student.contactName || student.contactPhone}`,
                 style: { textDecoration: 'none' },
-              }, '📞')
+              }, ikona('telefon', { velkost: 15 }))
               : null,
             maKontakt(student)
               ? el('button.iconbtn', {
-                text: '💬',
+                'aria-label': 'Napísať správu',
                 title: 'Napísať správu',
                 onclick: () => contactSheet(student, {
                   title: `Napísať — ${student.contactName || student.name}`,
                   text: textVymeskavanie(student, db.settings.shortName || db.settings.clubName, trenerMeno()),
-                }),
+                }, ikona('sprava', { velkost: 15 })),
               })
               : null,
             el('button.btn.btn--ghost.btn--sm', {
@@ -209,7 +210,8 @@ function droppingCard(list) {
 function unfinishedCard(sessions) {
   return el('div.card', { style: { background: 'var(--red-l)', borderColor: 'transparent' } },
     el('div', { style: { fontWeight: '600', marginBottom: '4px' },
-      text: sessions.length === 1 ? '⚠ Neukončený tréning' : `⚠ ${sessions.length} neukončené tréningy` }),
+    }, ikona('pozor', { velkost: 16 }),
+      sessions.length === 1 ? 'Neukončený tréning' : `${sessions.length} neukončené tréningy`),
     el('p.small', { style: { margin: '0 0 12px' },
       text: 'Chýba čas ukončenia, takže sa nezaráta do odučených hodín. Doplňte ho alebo tréning zmažte.' }),
     el('div.stack', {},
@@ -413,7 +415,8 @@ function recentSessions(trainer) {
   return el('div', {},
     el('h2.section-title', { text: 'Posledné tréningy' }),
     list.length === 0
-      ? el('div.empty', {}, el('span.empty__mark', { text: '♞' }), 'Zatiaľ žiadne zaznamenané tréningy.')
+      ? el('div.empty', {}, el('span.empty__mark', {}, ikona('trening', { velkost: 34 })),
+        'Zatiaľ žiadne zaznamenané tréningy.')
       : el('div.card.card--flush.list', {},
         list.map((s) => {
           const att = attendanceOfSession(s.id);
@@ -422,7 +425,8 @@ function recentSessions(trainer) {
             el('span.grow', {},
               el('div.item__title', { text: groupName(s.groupId) }),
               el('div.item__sub', { text: `${fmtDayShort(s.date)} · ${s.startTime}–${s.endTime} · ${trainerName(s.trainerId)}` }),
-              s.note ? el('div.item__sub', { style: { color: 'var(--ink-soft)' }, text: `📘 ${s.note}` }) : null,
+              s.note ? el('div.item__sub.row', { style: { gap: '5px', color: 'var(--ink-soft)' } },
+                ikona('kniha', { velkost: 13 }), s.note) : null,
             ),
             el('span.tag', { text: `${present}/${att.length}` }),
             el('span.chev', { text: '›' }),
@@ -547,7 +551,7 @@ export function renderSession(root, trainer, sessionId) {
           el('button', {
             style: { background: 'none', border: 0, padding: '6px 0 0', cursor: 'pointer', textAlign: 'left', color: session.note ? 'var(--ink)' : 'var(--terracotta-d)' },
             onclick: () => temaSheet(session),
-          }, session.note ? `📘 ${session.note}` : '＋ Doplniť tému tréningu'),
+          }, session.note ? [ikona('kniha', { velkost: 14 }), session.note] : '＋ Doplniť tému tréningu'),
         ),
         session.endTime ? null : el('span.tag.tag--live', { text: '● PREBIEHA' }),
       ),
@@ -620,10 +624,11 @@ function zapisSDochadzkou(sessionId, student, present, { ticho = false } = {}) {
 
   if (postup && !ticho) {
     toast(novaHodnost
-      ? `🎉 ${student.name} je ${novaHodnost.nazov}! · level ${po.level} · +${gamifikacia().goldZaLevel} 💰`
-      : `🎉 ${student.name} má level ${po.level} · +${gamifikacia().goldZaLevel} 💰`, { oslava: true });
+      ? `${student.name} je ${novaHodnost.nazov}! · level ${po.level} · +${gamifikacia().goldZaLevel} goldov`
+      : `${student.name} má level ${po.level} · +${gamifikacia().goldZaLevel} goldov`, { oslava: true });
   } else if (!ticho && present && po.seria && po.seria % gamifikacia().seriaDlzka === 0) {
-    toast(`🔥 ${student.name} — ${po.seria} tréningov po sebe · +${gamifikacia().seriaBonus} XP`, { oslava: true });
+    toast(`${student.name} — ${po.seria} tréningov po sebe · +${gamifikacia().seriaBonus} XP`,
+      { oslava: true, ikona: 'seria' });
   }
   return postup;
 }
@@ -663,18 +668,18 @@ function oznamPostupy(postupy) {
 
   const nove = postupy.filter((p) => p.hodnost);
   if (nove.length === 1 && postupy.length === 1) {
-    toast(`🎉 ${nove[0].meno} je ${nove[0].hodnost.nazov}! · level ${nove[0].level}`, { oslava: true });
+    toast(`${nove[0].meno} je ${nove[0].hodnost.nazov}! · level ${nove[0].level}`, { oslava: true });
     return;
   }
   if (nove.length) {
-    toast(`🎉 Nová hodnosť — ${zoznam(nove.map((p) => `${p.meno}: ${p.hodnost.nazov}`))}`, { oslava: true });
+    toast(`Nová hodnosť — ${zoznam(nove.map((p) => `${p.meno}: ${p.hodnost.nazov}`))}`, { oslava: true });
     return;
   }
   if (postupy.length === 1) {
-    toast(`🎉 ${postupy[0].meno} má level ${postupy[0].level}`, { oslava: true });
+    toast(`${postupy[0].meno} má level ${postupy[0].level}`, { oslava: true });
     return;
   }
-  toast(`🎉 Postúpili: ${zoznam(postupy.map((p) => `${p.meno} (${p.level})`))}`, { oslava: true });
+  toast(`Postúpili: ${zoznam(postupy.map((p) => `${p.meno} (${p.level})`))}`, { oslava: true });
 }
 
 /* ---------------- hárky ---------------- */

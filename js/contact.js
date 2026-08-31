@@ -6,6 +6,7 @@
    tréner sám, takže si text môže ešte upraviť.
    ========================================================= */
 import { el, mount, sheet, toast } from './ui.js';
+import { ikona } from './ikony.js';
 
 /** Číslo bez medzier a pomlčiek, aby sa dalo vytočiť. */
 export const cistecislo = (phone = '') => phone.replace(/[^\d+]/g, '');
@@ -53,19 +54,16 @@ export function contactSheet(student, { title = 'Ozvať sa rodičovi', subject =
       ) : null,
 
       telefon ? el('button.btn.btn--block', {
-        text: '📞 Zavolať',
         onclick: () => otvor(telHref(telefon)),
-      }) : null,
+      }, ikona('telefon', { velkost: 16 }), 'Zavolať') : null,
 
       telefon ? el('button.btn.btn--soft.btn--block', {
-        text: '💬 Otvoriť SMS s týmto textom',
         onclick: () => otvor(smsHref(telefon, sprava.value)),
-      }) : null,
+      }, ikona('sprava', { velkost: 16 }), 'Otvoriť SMS s týmto textom') : null,
 
       email ? el('button.btn.btn--ghost.btn--block', {
-        text: '✉️ Napísať e-mail',
         onclick: () => otvor(mailtoHref(email, subject, sprava.value)),
-      }) : null,
+      }, ikona('mail', { velkost: 16 }), 'Napísať e-mail') : null,
 
       el('p.tiny.faint', { style: { marginBottom: 0 },
         text: 'Nič sa neodošle samo — otvorí sa vám telefón alebo SMS aplikácia a odoslanie potvrdíte vy.' }),

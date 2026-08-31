@@ -18,6 +18,7 @@ import {
   state as syncState, onSyncChange, resetSyncState, retryFailed, clearFailed, clearSchemaWarning,
 } from '../sync.js';
 import { odznakEl, hodnost } from '../odznaky.js';
+import { ikona } from '../ikony.js';
 import { go, refresh } from '../router.js';
 import { textPreRodicov } from '../contact.js';
 
@@ -85,7 +86,7 @@ function accountCard(trainer) {
       ),
       isCloud() && hasDevicePin()
         ? el('button.btn.btn--soft.btn--block', {
-          text: '🔒 Zamknúť (odovzdať zariadenie kolegovi)',
+          'aria-label': 'Zamknúť',
           onclick: () => {
             lockApp();
             toast('Zamknuté');
@@ -246,7 +247,8 @@ function syncCard() {
 
   const varovanie = syncState.schemaWarning
     ? el('div.card', { style: { background: 'var(--red-l)', borderColor: 'transparent' } },
-      el('div', { style: { fontWeight: '600', marginBottom: '4px' }, text: '⚠ Databáza nie je aktuálna' }),
+      el('div.row', { style: { gap: '6px', fontWeight: '600', marginBottom: '4px' } },
+        ikona('pozor', { velkost: 15 }), 'Databáza nie je aktuálna'),
       el('p.small', { style: { margin: '0 0 10px' }, text: syncState.schemaWarning.message }),
       el('button.btn.btn--ghost.btn--sm', {
         text: 'Už som to spustil',
@@ -799,7 +801,8 @@ function rodiciaCard() {
       el('p.small.muted', { style: { margin: 0 },
         text: 'Čo klub o dieťati eviduje a prečo. Dajte to rodičom pri prihláške — '
           + 'informovať ich musíte aj vtedy, keď súhlas nepotrebujete.' }),
-      el('button.btn.btn--block', { text: '📄 Zobraziť text', onclick: () => rodiciaSheet(text()) }),
+      el('button.btn.btn--block', { onclick: () => rodiciaSheet(text()) },
+        ikona('dokument', { velkost: 16 }), 'Zobraziť text'),
       el('p.tiny.faint', { style: { margin: 0 },
         text: 'Text je pripravený na bežný šachový krúžok. Pred prvým použitím si ho prejdite '
           + 'a doplňte, čo máte inak. Nie je to právne poradenstvo.' }),
@@ -814,9 +817,8 @@ function rodiciaSheet(text) {
       el('p.small.muted', { style: { margin: 0 }, text: 'Môžete si ho tu upraviť a potom skopírovať alebo poslať.' }),
       pole,
       el('button.btn.btn--block', {
-        text: '📋 Skopírovať',
         onclick: () => skopirovat(pole.value, 'Skopírované — vložte do e-mailu alebo dokumentu'),
-      }),
+      }, ikona('dokument', { velkost: 16 }), 'Skopírovať'),
       el('button.btn.btn--ghost.btn--block', {
         text: '⤓ Uložiť ako súbor',
         onclick: () => {

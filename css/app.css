@@ -56,7 +56,7 @@ a { color: var(--terracotta); }
 
 /* ---------- boot ---------- */
 .boot { display: grid; place-content: center; gap: 10px; height: 100dvh; text-align: center; color: var(--ink-faint); }
-.boot__mark { font-size: 46px; }
+.boot__mark { display: grid; place-items: center; }
 
 /* ---------- layout ---------- */
 .app { min-height: 100dvh; }
@@ -237,7 +237,7 @@ a { color: var(--terracotta); }
 /* ---------- login ---------- */
 .login { min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 28px 20px calc(28px + var(--safe-b)); }
 .login__inner { width: 100%; max-width: 380px; }
-.login__logo { font-size: 40px; text-align: center; line-height: 1; }
+.login__logo { display: grid; place-items: center; line-height: 1; color: var(--ink); }
 .login__title { font-size: 26px; text-align: center; margin-top: 10px; }
 .login__tag { text-align: center; color: var(--ink-faint); font-size: 13.5px; margin: 4px 0 26px; font-style: italic; }
 
@@ -380,6 +380,10 @@ table.data th:first-child, table.data td:first-child {
   font-size: 14px; font-weight: 500; box-shadow: var(--shadow-lg);
   opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease;
   max-width: calc(100vw - 32px); text-align: center;
+  /* ikona vľavo, text vedľa nej — width:max-content drží pilulku úzku,
+     kým sa text nedotkne max-width a nezalomí sa */
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  width: max-content;
 }
 .toast--on { opacity: 1; transform: translate(-50%, 0); }
 /* level up nesmie vyzerať ako bežná hláška — je to odmena, nech je ju vidieť */
@@ -445,3 +449,12 @@ table.data th:first-child, table.data td:first-child {
 .hodnost__rozsah { font-size: 10px; color: var(--ink-faint); }
 /* v rebríčku sa podriadok radšej oreže, než by mal riadok narásť na dvojnásobok */
 .item__sub--riadok { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- kreslené ikony ---------- */
+.ikona { display: inline-flex; flex: none; line-height: 0; vertical-align: -.16em; }
+.ikona svg { display: block; }
+.goldy { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+/* ikona v pilulke aj v tlačidle sa má zarovnať k textu, nie visieť pod ním */
+.pill, .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.btn--block { width: 100%; }
+.empty__mark { opacity: .45; display: grid; place-items: center; margin-bottom: 10px; }

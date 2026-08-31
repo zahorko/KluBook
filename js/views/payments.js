@@ -13,6 +13,7 @@ import {
   pokladnaTrenerov, zapisatOdvod, zrusitOdvod, odvodyTrenera,
 } from '../store.js';
 import { go, refresh } from '../router.js';
+import { ikona } from '../ikony.js';
 import { contactSheet, maKontakt, textPlatba } from '../contact.js';
 
 const uiState = { period: periodOf(todayISO()), rucneZvolene: false, pohlad: 'ziaci' };
@@ -151,7 +152,6 @@ function ziakSheet(student, obdobie, period) {
           )),
         u.dlh && maKontakt(student)
           ? el('button.btn.btn--soft.btn--block', {
-            text: '💬 Poslať pripomienku rodičovi',
             onclick: () => {
               close();
               contactSheet(student, {
@@ -161,7 +161,7 @@ function ziakSheet(student, obdobie, period) {
                   db.settings.shortName || db.settings.clubName, currentTrainer()?.name ?? ''),
               });
             },
-          })
+          }, ikona('sprava', { velkost: 16 }), 'Poslať pripomienku rodičovi')
           : null,
       );
     };
@@ -211,7 +211,7 @@ function pokladnaSekcia(obdobie) {
 
   if (!riadky.length) {
     return el('div.empty', {},
-      el('span.empty__mark', { text: '💶' }),
+      el('span.empty__mark', {}, ikona('platby', { velkost: 34 })),
       'V tomto mesiaci sa zatiaľ nevybrala žiadna hotovosť.');
   }
 

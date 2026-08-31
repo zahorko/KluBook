@@ -11,6 +11,7 @@ import {
   everyone, trainsWithClub, studentFee, hasOwnFee,
 } from '../store.js';
 import { go, refresh } from '../router.js';
+import { ikona } from '../ikony.js';
 
 const VYCHODZI_STAV = { tab: 'treneri', range: '30', kontaktyFilter: 'vsetci' };
 const uiState = { ...VYCHODZI_STAV };
@@ -325,7 +326,7 @@ function paymentsReport() {
 
   if (!ziaci.length) {
     return el('div.empty', {},
-      el('span.empty__mark', { text: '♟' }),
+      el('span.empty__mark', {}, ikona('trening', { velkost: 34 })),
       'Zatiaľ tu nie sú žiadni žiaci. Pridajte ich v záložke Žiaci.',
     );
   }
